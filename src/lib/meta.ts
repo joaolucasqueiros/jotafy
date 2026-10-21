@@ -135,10 +135,10 @@ export async function syncMeta(workspaceId: string) {
       campaign_id: string;
       date_start: string;
       spend: string;
-      clicks: string;
+      inline_link_clicks?: string;
       impressions: string;
     }>(`${account.external_id}/insights`, token, {
-      fields: 'ad_id,adset_id,campaign_id,spend,clicks,impressions',
+      fields: 'ad_id,adset_id,campaign_id,spend,inline_link_clicks,impressions',
       level: 'ad',
       time_increment: '1',
       // Explicit dates include today's partial results in the account's supported timezone.
@@ -155,7 +155,7 @@ export async function syncMeta(workspaceId: string) {
           i.campaign_id,
           i.date_start,
           Math.round(Number(i.spend) * 100),
-          Number(i.clicks),
+          Number(i.inline_link_clicks || 0),
           Number(i.impressions),
         ],
       );

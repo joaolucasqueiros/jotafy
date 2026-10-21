@@ -8,7 +8,7 @@ type FunnelProps = { clicks: number; pageviews: number; checkouts: number; sales
 export function ConversionFunnel({ clicks, pageviews, checkouts, sales }: FunnelProps) {
   const gradientId = `conversion-flow-${useId().replace(/:/g, '')}`;
   const stages = [
-    { label: 'Cliques', value: clicks },
+    { label: 'Cliques no link', value: clicks },
     { label: 'Vis. de página', value: pageviews },
     { label: 'Checkouts', value: checkouts },
     { label: 'Vendas aprov.', value: sales },
