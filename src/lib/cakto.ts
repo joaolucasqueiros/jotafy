@@ -30,6 +30,21 @@ export const caktoPayload = z.object({
     status: optString,
     amount: z.union([z.string(), z.number()]),
     currency: z.string().default('BRL'),
+    fees: z.union([z.number(), z.string()]).nullish(),
+    commissions: z
+      .array(
+        z.object({
+          user: z.email(),
+          type: z.string(),
+          percentage: z.number().optional(),
+          totalAmount: z.union([z.number(), z.string()]),
+        }),
+      )
+      .optional(),
+    paidAt: optString,
+    refundedAt: optString,
+    chargedbackAt: optString,
+    canceledAt: optString,
     createdAt: optString,
     approvedDate: z.string().nullable().optional(),
     updatedAt: optString,
@@ -75,12 +90,31 @@ export function normalizeCakto(input: unknown, expectedSecret: string) {
   const amount = Number(d.amount);
   if (!Number.isFinite(amount) || amount < 0 || amount > 1e10)
     throw new HttpError(400, 'Valor inválido.');
-  const when = d.updatedAt || (status === 'approved' ? d.approvedDate : null) || d.createdAt;
+  const when =
+    d.updatedAt ||
+    (status === 'approved' ? d.paidAt || d.approvedDate : null) ||
+    (status === 'refunded' ? d.refundedAt : null) ||
+    (status === 'chargeback' ? d.chargedbackAt : null) ||
+    d.canceledAt ||
+    d.createdAt;
   if (!when || !Number.isFinite(Date.parse(when)))
     throw new HttpError(400, 'Evento sem data válida (updatedAt/approvedDate/createdAt).');
   if (d.currency !== 'BRL') throw new HttpError(422, 'Este workspace aceita vendas em BRL.');
   const tracking = { ...d, ...d.utm, ...d.tracking };
+  function cents(value: string | number) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 1e10)
+      throw new HttpError(400, 'Valor financeiro inválido.');
+    return Math.round(n * 100);
+  }
   return {
+    providerFees: d.fees == null ? null : cents(d.fees),
+    commissions:
+      d.commissions?.map((c) => ({
+        userHash: sha256(c.user.trim().toLowerCase()),
+        type: c.type,
+        amount: cents(c.totalAmount),
+      })) ?? null,
     eventKey: payload.id || sha256(JSON.stringify({ event: payload.event, data: d })),
     eventName: payload.event,
     externalId: d.id,

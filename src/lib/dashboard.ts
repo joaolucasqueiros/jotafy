@@ -1,4 +1,5 @@
 import { estimateCosts, defaultCosts } from './costs';
+import { financialSummary } from './financials';
 import { query } from './db';
 import type { Workspace } from './auth';
 import type { DashboardData, Sale, Campaign } from './types';
@@ -101,7 +102,50 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
       : defaultCosts,
     !!(f.campaign || f.adset || f.ad),
   );
+  const financialOrders = await query(
+    `SELECT amount,provider_fees,commission_breakdown FROM orders WHERE ${orderFilter} AND status='approved'`,
+    values,
+  );
+  const finance = financialSummary(
+    financialOrders as Parameters<typeof financialSummary>[0],
+    w.cakto_account_email,
+    costRow?.fee_bps || 0,
+  );
+  const [productsSummary, paymentRows] = await Promise.all([
+    query(
+      `SELECT product AS name,count(*)::int AS sales,sum(amount)::float8 AS revenue FROM orders WHERE ${orderFilter} AND status='approved' GROUP BY product ORDER BY sum(amount) DESC LIMIT 20`,
+      values,
+    ),
+    query(
+      `SELECT COALESCE(payment_method,'Não informado') AS method,count(*) FILTER(WHERE status='approved' OR purchased_at IS NOT NULL)::int AS approved,count(*)::int AS total FROM orders WHERE ${orderFilter} GROUP BY payment_method ORDER BY count(*) DESC`,
+      values,
+    ),
+  ]);
+  const financials = {
+    productsSummary: productsSummary as { name: string; sales: number; revenue: number }[],
+    paymentSummary: paymentRows.map((row) => ({
+      method: row.method as string,
+      approved: row.approved as number,
+      total: row.total as number,
+      rate: row.total ? (row.approved / row.total) * 100 : 0,
+    })),
+    gross: approved.amount + refund.amount + chargeback.amount,
+    net: finance.net,
+    netEstimated: finance.estimated,
+    fees: finance.fees,
+    feesEstimated: approved.count === 0 || finance.reportedFees !== approved.count,
+    refunded: refund.amount,
+    chargebackAmount: chargeback.amount,
+    pending: total('pending').amount,
+    confirmedNetOrders: finance.confirmed,
+    ticket: approved.count ? Math.round(approved.amount / approved.count) : 0,
+    taxes: costs.taxes,
+    adTax: costs.adTax,
+    products: costs.products,
+    expenses: costs.expenses,
+  };
   return {
+    financials,
     demo: false,
     workspace: w.name,
     userName: w.user_name,
@@ -111,8 +155,8 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
     summary: {
       revenue: approved.amount,
       spend,
-      profit: approved.amount - spend - costs.total,
-      costs: costs.total,
+      profit: finance.net - spend - (costs.total - costs.fees),
+      costs: approved.amount - finance.net + costs.total - costs.fees,
       roas: spend ? approved.amount / spend : 0,
       cpa: approved.count ? spend / approved.count : 0,
       sales: approved.count,

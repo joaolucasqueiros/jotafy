@@ -11,6 +11,7 @@ export type Workspace = {
   email: string;
   allowed_origins: string[];
   cakto_secret: string | null;
+  cakto_account_email?: string | null;
   pixel_id: string | null;
   capi_token: string | null;
   test_event_code: string | null;

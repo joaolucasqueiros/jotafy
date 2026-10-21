@@ -27,6 +27,7 @@ export async function GET() {
       accounts,
       jobs,
       allowedOrigins: w.allowed_origins,
+      caktoAccountEmail: w.cakto_account_email || '',
       caktoConfigured: !!w.cakto_secret,
       pixelId: w.pixel_id,
       capiConfigured: !!w.capi_token,
@@ -37,6 +38,7 @@ export async function GET() {
   }
 }
 const schema = z.object({
+  caktoAccountEmail: z.union([z.email(), z.literal('')]).optional(),
   caktoSecret: z.string().min(16).max(512).optional(),
   pixelId: z
     .string()
@@ -70,7 +72,7 @@ export async function POST(request: Request) {
       input = schema.parse(await readJson(request));
     const generated = input.generateSecret ? randomToken() : undefined;
     await query(
-      `UPDATE workspaces SET cakto_secret=COALESCE($2,cakto_secret),pixel_id=COALESCE($3,pixel_id),capi_token=COALESCE($4,capi_token),test_event_code=COALESCE($5,test_event_code),allowed_origins=COALESCE($6,allowed_origins) WHERE id=$1`,
+      `UPDATE workspaces SET cakto_secret=COALESCE($2,cakto_secret),pixel_id=COALESCE($3,pixel_id),capi_token=COALESCE($4,capi_token),test_event_code=COALESCE($5,test_event_code),allowed_origins=COALESCE($6,allowed_origins),cakto_account_email=COALESCE($7,cakto_account_email) WHERE id=$1`,
       [
         w.id,
         input.caktoSecret || generated ? encrypt(input.caktoSecret || generated!) : null,
@@ -78,6 +80,7 @@ export async function POST(request: Request) {
         input.capiToken ? encrypt(input.capiToken) : null,
         input.testEventCode ?? null,
         input.allowedOrigins ?? null,
+        input.caktoAccountEmail?.trim().toLowerCase() ?? null,
       ],
     );
     return NextResponse.json({ ok: true, ...(generated ? { generatedSecret: generated } : {}) });

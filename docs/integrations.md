@@ -128,3 +128,38 @@ As visitas refletem a medição e a atribuição da Meta, não visitantes indivi
 Ao atualizar, pare o worker, execute `npm run db:migrate` (migração 004), publique
 o site, reinicie o worker e solicite uma sincronização para preencher os últimos
 90 dias. A Meta precisa ter dados de visualizações de destino disponíveis.
+
+### Financeiro Cakto (migração 005)
+
+Fonte: [contrato oficial de webhooks](https://docs.cakto.com.br/conceitos/webhooks).
+O adaptador V1 lê `data.fees` e `data.commissions[]` (`user`, `type`,
+`totalAmount`) e converte reais em centavos. `paidAt`, `refundedAt`,
+`chargedbackAt` e `canceledAt` são aceitos para as datas do ciclo do pedido.
+Os e-mails dos participantes são armazenados como hashes no detalhamento.
+
+Em Integrações, configure o **E-mail da conta Cakto** correspondente ao campo
+`commissions[].user`. O líquido confirmado é a soma das comissões desse
+participante, já líquidas: não se subtraem as taxas de novo. Não somamos as
+comissões de todos os participantes, pois isso incluiria receita de terceiros.
+Sem correspondência, o líquido é estimado como valor aprovado menos taxas
+recebidas, ou taxa percentual configurada quando ausentes. Comissões de terceiros
+desconhecidas não são estimadas. A cobertura aparece em número de vendas.
+Alterar o e-mail recalcula os pedidos cujo detalhamento já foi recebido.
+
+O bruto reúne pedidos atualmente aprovados, reembolsados e com chargeback;
+pendentes e recusados ficam fora. O faturamento aprovado atual exclui estornos.
+O líquido considera somente aprovados. O lucro estimado é o líquido menos
+anúncios, impostos, produtos e despesas; a taxa da plataforma não é descontada
+duas vezes. ROAS permanece faturamento aprovado / gasto Meta. Os filtros de data
+agrupam pedidos pela aprovação, quando conhecida, ou pelo evento recebido;
+não constituem um extrato de movimentações por dia de liquidação. Saldo de saque,
+retenções, antecipações e reembolsos parciais não estão implementados.
+
+Pedidos antigos sem detalhamento continuarão estimados até receberem um novo
+evento válido com os campos financeiros; não há importação histórica via API.
+Use webhook **V1 (data objeto)** nesta versão; V2 (`data` array) precisa de um
+adaptador adicional. O payload de teste é fictício segundo a documentação Cakto;
+valide também uma entrega real antes de confiar na conciliação financeira.
+
+Atualização: pare o worker, aplique `npm run db:migrate` antes da publicação,
+publique e reinicie o worker. Configure o e-mail, o segredo e o webhook na Cakto.

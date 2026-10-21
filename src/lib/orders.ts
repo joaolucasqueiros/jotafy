@@ -75,9 +75,9 @@ export async function ingestCakto(
     campaignId = campaign?.external_id || null;
     const attribution = campaignId ? (click ? 'click' : 'utm') : 'unattributed';
     await client.query(
-      `INSERT INTO orders(workspace_id,external_id,status,amount,currency,product,customer_hash,campaign_id,adset_id,ad_id,click_id,attribution,payment_method,occurred_at,purchased_at)
-  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-  ON CONFLICT(workspace_id,provider,external_id) DO UPDATE SET status=$3,amount=$4,product=$6,customer_hash=COALESCE($7,orders.customer_hash),campaign_id=COALESCE($8,orders.campaign_id),adset_id=COALESCE($9,orders.adset_id),ad_id=COALESCE($10,orders.ad_id),click_id=COALESCE($11,orders.click_id),attribution=CASE WHEN $8 IS NOT NULL THEN $12 ELSE orders.attribution END,occurred_at=$14,purchased_at=COALESCE(orders.purchased_at,$15),updated_at=now()`,
+      `INSERT INTO orders(workspace_id,external_id,status,amount,currency,product,customer_hash,campaign_id,adset_id,ad_id,click_id,attribution,payment_method,occurred_at,purchased_at,provider_fees,commission_breakdown)
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+  ON CONFLICT(workspace_id,provider,external_id) DO UPDATE SET status=$3,amount=$4,product=$6,customer_hash=COALESCE($7,orders.customer_hash),campaign_id=COALESCE($8,orders.campaign_id),adset_id=COALESCE($9,orders.adset_id),ad_id=COALESCE($10,orders.ad_id),click_id=COALESCE($11,orders.click_id),attribution=CASE WHEN $8 IS NOT NULL THEN $12 ELSE orders.attribution END,occurred_at=$14,purchased_at=COALESCE(orders.purchased_at,$15),provider_fees=COALESCE($16,orders.provider_fees),commission_breakdown=COALESCE($17,orders.commission_breakdown),updated_at=now()`,
       [
         workspaceId,
         event.externalId,
@@ -94,6 +94,8 @@ export async function ingestCakto(
         event.paymentMethod,
         event.occurredAt,
         event.status === 'approved' ? event.occurredAt : null,
+        event.providerFees,
+        event.commissions ? JSON.stringify(event.commissions) : null,
       ],
     );
     if (event.status === 'approved' && previous?.status !== 'approved') {

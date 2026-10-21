@@ -80,6 +80,7 @@ type Integration = {
   }[];
   allowedOrigins: string[];
   caktoConfigured: boolean;
+  caktoAccountEmail?: string;
   pixelId: string | null;
   capiConfigured: boolean;
   testEventCode: string | null;
@@ -386,7 +387,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
   }
   const metrics = [
     {
-      label: 'Faturamento aprovado',
+      label: 'Faturamento aprovado atual',
       value: money(s.revenue),
       icon: CircleDollarSign,
       note: 'Vendas confirmadas pela Cakto',
@@ -765,6 +766,143 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   </div>
                 ))}
               </div>
+              {data.financials && (
+                <section className="panel" style={{ marginTop: 20, marginBottom: 20 }}>
+                  <div className="panel-heading">
+                    <div>
+                      <h2>Financeiro Cakto</h2>
+                      <p>
+                        Vendas no período selecionado; não representa saldo disponível para saque.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="metric-grid" style={{ padding: 20 }}>
+                    {[
+                      [
+                        'Bruto de vendas',
+                        data.financials.gross,
+                        'Aprovadas, reembolsadas e chargebacks; exclui pendentes',
+                      ],
+                      [
+                        data.financials.netEstimated
+                          ? 'Líquido estimado'
+                          : 'Líquido informado pela Cakto',
+                        data.financials.net,
+                        `${data.financials.confirmedNetOrders} de ${s.sales} vendas com comissão identificada`,
+                      ],
+                      [
+                        data.financials.feesEstimated
+                          ? 'Taxas da plataforma · estimadas em parte'
+                          : 'Taxas informadas pela Cakto',
+                        data.financials.fees,
+                        'Taxas reais quando recebidas; configuração para valores ausentes',
+                      ],
+                      ['Vendas pendentes', data.financials.pending, 'Não incluídas no faturamento'],
+                      [
+                        'Reembolsos',
+                        data.financials.refunded,
+                        'Pedidos reembolsados no grupo de vendas do período',
+                      ],
+                      [
+                        'Chargebacks',
+                        data.financials.chargebackAmount,
+                        'Pedidos contestados; excluídos do líquido',
+                      ],
+                      [
+                        'Ticket médio aprovado',
+                        data.financials.ticket,
+                        'Faturamento aprovado atual ÷ vendas aprovadas',
+                      ],
+                      [
+                        'Impostos sobre vendas',
+                        data.financials.taxes,
+                        'Estimativa conforme configuração',
+                      ],
+                      [
+                        'Imposto sobre anúncios',
+                        data.financials.adTax,
+                        'Estimativa conforme configuração',
+                      ],
+                      [
+                        'Custo dos produtos',
+                        data.financials.products,
+                        'Custo configurado por venda aprovada',
+                      ],
+                      [
+                        'Despesas adicionais',
+                        data.financials.expenses,
+                        'Despesas diárias; não rateadas com filtro de campanha',
+                      ],
+                    ].map(([label, value, note]) => (
+                      <div className="metric-card" key={String(label)}>
+                        <div className="metric-top">
+                          <span>{label}</span>
+                        </div>
+                        <strong>{money(Number(value))}</strong>
+                        <div className="metric-note">{note}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bottom-grid" style={{ padding: 20 }}>
+                    <div className="table-scroll">
+                      <h3>Vendas por produto</h3>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>PRODUTO</th>
+                            <th>APROVADAS</th>
+                            <th>FATURAMENTO</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.financials.productsSummary.map((product) => (
+                            <tr key={product.name}>
+                              <td>{product.name}</td>
+                              <td>{product.sales}</td>
+                              <td>{money(product.revenue)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {!data.financials.productsSummary.length && (
+                        <p>Nenhuma venda aprovada no período.</p>
+                      )}
+                    </div>
+                    <div className="table-scroll">
+                      <h3>Aprovação por pagamento</h3>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>MEIO</th>
+                            <th>APROVADOS / PEDIDOS</th>
+                            <th>TAXA</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.financials.paymentSummary.map((payment) => (
+                            <tr key={payment.method}>
+                              <td>{payment.method}</td>
+                              <td>
+                                {payment.approved} / {payment.total}
+                              </td>
+                              <td>{percent(payment.rate)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p>
+                        Inclui pedidos aprovados posteriormente reembolsados quando há data de
+                        aprovação registrada.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="panel-footnote">
+                    Líquido confirmado usa sua comissão no webhook, sem descontar as taxas
+                    novamente. Estimativas não incluem comissões desconhecidas. ROAS usa faturamento
+                    aprovado antes de custos.
+                  </div>
+                </section>
+              )}
               <div className="secondary-metrics">
                 <div>
                   <span className="secondary-icon">
@@ -893,7 +1031,8 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                     sales={s.sales}
                   />
                   <div className="panel-footnote">
-                    Cliques no link e visitas de destino: Meta Ads. Checkouts: pixel MetaTrack. Vendas: Cakto. Etapas agregadas, sem visitantes únicos.
+                    Cliques no link e visitas de destino: Meta Ads. Checkouts: pixel MetaTrack.
+                    Vendas: Cakto. Etapas agregadas, sem visitantes únicos.
                   </div>
                 </section>
                 <section className="panel connection-panel">
@@ -1716,6 +1855,7 @@ function Integrations({
 }) {
   const [secret, setSecret] = useState(''),
     [origins, setOrigins] = useState(''),
+    [caktoEmail, setCaktoEmail] = useState(''),
     [pixel, setPixel] = useState(''),
     [token, setToken] = useState(''),
     [testCode, setTestCode] = useState(''),
@@ -1724,6 +1864,7 @@ function Integrations({
   useEffect(() => {
     if (i) {
       setOrigins(i.allowedOrigins.join('\n'));
+      setCaktoEmail(i.caktoAccountEmail || '');
       setPixel(i.pixelId || '');
       setTestCode(i.testEventCode || '');
     }
@@ -1741,6 +1882,7 @@ function Integrations({
         ...(pixel ? { pixelId: pixel } : {}),
         ...(token ? { capiToken: token } : {}),
         testEventCode: testCode,
+        caktoAccountEmail: caktoEmail,
         allowedOrigins: origins
           .split('\n')
           .map((s) => s.trim())
@@ -1921,6 +2063,19 @@ function Integrations({
                 <Copy size={16} />
               </button>
             </div>
+          </label>
+          <label className="form-label">
+            E-mail da conta Cakto
+            <input
+              type="email"
+              value={caktoEmail}
+              onChange={(e) => setCaktoEmail(e.target.value)}
+              placeholder="Seu e-mail cadastrado na Cakto"
+            />
+            <small>
+              Identifica sua comissão para calcular o líquido. Sem correspondência, o valor é
+              estimado.
+            </small>
           </label>
           <label className="form-label">
             Segredo do webhook

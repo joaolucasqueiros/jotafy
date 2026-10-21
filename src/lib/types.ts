@@ -24,7 +24,26 @@ export type Sale = {
   paymentMethod: string;
   date: string;
 };
+export type Financials = {
+  gross: number;
+  net: number;
+  netEstimated: boolean;
+  fees: number;
+  feesEstimated: boolean;
+  refunded: number;
+  chargebackAmount: number;
+  pending: number;
+  confirmedNetOrders: number;
+  productsSummary: { name: string; sales: number; revenue: number }[];
+  paymentSummary: { method: string; approved: number; total: number; rate: number }[];
+  ticket: number;
+  taxes: number;
+  adTax: number;
+  products: number;
+  expenses: number;
+};
 export type DashboardData = {
+  financials?: Financials;
   demo: boolean;
   workspace: string;
   userName: string;

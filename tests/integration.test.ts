@@ -166,6 +166,45 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
       assert.equal(empty.summary.pageviews, 0);
     },
   );
+  await t.test(
+    'Cakto financial receipts remain idempotent and refunds exclude net proceeds',
+    async () => {
+      const fw = await workspace();
+      const e = event('financial', 'purchase_approved', {
+        fees: 10,
+        commissions: [{ user: 'owner@example.com', type: 'producer', totalAmount: 150 }],
+      });
+      await ingestCakto(fw.id, e);
+      await ingestCakto(fw.id, e);
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      const filters = { start: day, end: day };
+      const identity = {
+        ...fw,
+        user_name: 'Owner',
+        email: 'owner@example.com',
+        cakto_account_email: 'owner@example.com',
+      };
+      const data = await dashboard(identity, filters);
+      assert.equal(data.financials?.gross, 19700);
+      assert.equal(data.financials?.net, 15000);
+      assert.equal(data.financials?.fees, 1000);
+      assert.equal(data.financials?.netEstimated, false);
+      assert.equal(data.summary.profit, 15000);
+      await ingestCakto(fw.id, event('financial', 'purchase_refunded'));
+      const refund = await dashboard(identity, filters);
+      assert.equal(refund.financials?.gross, 19700);
+      assert.equal(refund.financials?.net, 0);
+      assert.equal(refund.financials?.refunded, 19700);
+      const [row] = await query(
+        'SELECT provider_fees,commission_breakdown FROM orders WHERE workspace_id=$1',
+        [fw.id],
+      );
+      assert.equal(Number(row.provider_fees), 1000);
+      assert(!JSON.stringify(row.commission_breakdown).includes('owner@example.com'));
+      // Keep this independent fixture from the worker-delivery tests below.
+      await query('DELETE FROM jobs WHERE workspace_id=$1', [fw.id]);
+    },
+  );
   await t.test('unconfigured CAPI is retried and never marked delivered', async () => {
     await runJobs(5);
     const jobs = await query('SELECT status,attempts,last_error FROM jobs WHERE workspace_id=$1', [
