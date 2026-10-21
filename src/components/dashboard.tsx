@@ -893,7 +893,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                     sales={s.sales}
                   />
                   <div className="panel-footnote">
-                    Etapas agregadas; os eventos podem se repetir e não representam coortes únicas.
+                    Cliques no link e visitas de destino: Meta Ads. Checkouts: pixel MetaTrack. Vendas: Cakto. Etapas agregadas, sem visitantes únicos.
                   </div>
                 </section>
                 <section className="panel connection-panel">

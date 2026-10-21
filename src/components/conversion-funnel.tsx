@@ -9,7 +9,7 @@ export function ConversionFunnel({ clicks, pageviews, checkouts, sales }: Funnel
   const gradientId = `conversion-flow-${useId().replace(/:/g, '')}`;
   const stages = [
     { label: 'Cliques no link', value: clicks },
-    { label: 'Vis. de página', value: pageviews },
+    { label: 'Vis. de destino', value: pageviews },
     { label: 'Checkouts', value: checkouts },
     { label: 'Vendas aprov.', value: sales },
   ].map((stage) => ({

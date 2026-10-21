@@ -115,3 +115,16 @@ Eventos de navegação usam UUID do pixel. O evento Purchase enviado manualmente
 6. Reenvie o webhook e confirme ausência de receita duplicada. Teste pendente → aprovado → reembolsado e um chargeback independente.
 7. Use Test Events no Events Manager e confira `events_received=1`, identificadores, `event_id`, qualidade de matching e ausência de duplicação por outra integração.
 8. Retire `test_event_code`, confira as permissões externas do aplicativo e monitore primeiras entregas de produção.
+
+
+### Visitas de destino no funil
+
+Os cliques usam `inline_link_clicks`; as visitas usam `actions` com tipo exato
+`landing_page_view` do Insights da Meta, por anúncio e dia. PageViews do pixel
+MetaTrack não são somados a essa métrica. Sem essa ação na resposta, o valor é zero.
+Checkouts continuam sendo eventos do pixel MetaTrack e vendas vêm da Cakto.
+As visitas refletem a medição e a atribuição da Meta, não visitantes individuais.
+
+Ao atualizar, pare o worker, execute `npm run db:migrate` (migração 004), publique
+o site, reinicie o worker e solicite uma sincronização para preencher os últimos
+90 dias. A Meta precisa ter dados de visualizações de destino disponíveis.

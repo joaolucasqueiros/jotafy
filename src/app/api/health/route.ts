@@ -3,7 +3,7 @@ import { query } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
-    const rows = await query("SELECT version FROM schema_migrations WHERE version='003'");
+    const rows = await query("SELECT version FROM schema_migrations WHERE version='004'");
     if (!rows.length) throw new Error('Migration missing');
     return NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
   } catch {

@@ -143,7 +143,7 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
     async () => {
       const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       await query(
-        "INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,spend,clicks,impressions) VALUES($1,'300','200','100',$2,5000,100,1000)",
+        "INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,spend,clicks,impressions,landing_page_views) VALUES($1,'300','200','100',$2,5000,100,1000,72)",
         [w.id, day],
       );
       const data = await dashboard(
@@ -152,6 +152,7 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
       );
       assert.equal(data.summary.revenue, 19700);
       assert.equal(data.summary.spend, 5000);
+      assert.equal(data.summary.pageviews, 72);
       assert.equal(data.summary.roas, 3.94);
       assert.equal(data.summary.sales, 1);
       assert.equal(data.campaigns[0].revenue, 19700);
@@ -162,6 +163,7 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
       );
       assert.equal(empty.summary.sales, 0);
       assert.equal(empty.summary.roas, 0);
+      assert.equal(empty.summary.pageviews, 0);
     },
   );
   await t.test('unconfigured CAPI is retried and never marked delivered', async () => {

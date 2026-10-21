@@ -30,7 +30,7 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
       values,
     ),
     query(
-      `SELECT campaign_id,sum(spend)::float8 AS spend,sum(clicks)::int AS clicks,sum(impressions)::int AS impressions FROM ad_insights WHERE ${insightFilter} GROUP BY campaign_id`,
+      `SELECT campaign_id,sum(spend)::float8 AS spend,sum(clicks)::int AS clicks,sum(landing_page_views)::int AS landing_page_views,sum(impressions)::int AS impressions FROM ad_insights WHERE ${insightFilter} GROUP BY campaign_id`,
       values,
     ),
     query(
@@ -126,7 +126,7 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
       attributed: approved.count - approved.unattributed,
       unattributed: approved.unattributed,
       clicks,
-      pageviews: events.find((e) => e.event_name === 'PageView')?.count || 0,
+      pageviews: insights.reduce((sum, row) => sum + row.landing_page_views, 0),
       checkouts: events.find((e) => e.event_name === 'InitiateCheckout')?.count || 0,
     },
     series,

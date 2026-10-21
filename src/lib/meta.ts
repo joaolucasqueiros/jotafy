@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { query } from './db';
 import { decrypt, HttpError } from './security';
 import { dateRange } from './format';
+import { landingPageViews, type MetaAction } from './meta-insights';
 const graph = () => `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v25.0'}`;
 export async function graphRequest<T = Record<string, unknown>>(
   path: string,
@@ -136,9 +137,10 @@ export async function syncMeta(workspaceId: string) {
       date_start: string;
       spend: string;
       inline_link_clicks?: string;
+      actions?: MetaAction[];
       impressions: string;
     }>(`${account.external_id}/insights`, token, {
-      fields: 'ad_id,adset_id,campaign_id,spend,inline_link_clicks,impressions',
+      fields: 'ad_id,adset_id,campaign_id,spend,inline_link_clicks,impressions,actions',
       level: 'ad',
       time_increment: '1',
       // Explicit dates include today's partial results in the account's supported timezone.
@@ -146,8 +148,8 @@ export async function syncMeta(workspaceId: string) {
     });
     for (const i of insights)
       await query(
-        `INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,spend,clicks,impressions)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(workspace_id,ad_id,day) DO UPDATE SET spend=$6,clicks=$7,impressions=$8`,
+        `INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,spend,clicks,impressions,landing_page_views)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(workspace_id,ad_id,day) DO UPDATE SET spend=$6,clicks=$7,impressions=$8,landing_page_views=$9`,
         [
           workspaceId,
           i.ad_id,
@@ -157,6 +159,7 @@ export async function syncMeta(workspaceId: string) {
           Math.round(Number(i.spend) * 100),
           Number(i.inline_link_clicks || 0),
           Number(i.impressions),
+          landingPageViews(i.actions),
         ],
       );
   }
