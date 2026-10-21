@@ -19,10 +19,8 @@ import {
   CircleDollarSign,
   Code2,
   Copy,
-  CreditCard,
   ExternalLink,
   Filter,
-  Globe2,
   Layers3,
   LayoutDashboard,
   Link2,
@@ -52,6 +50,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api } from '@/lib/client-api';
+import { ConversionFunnel } from './conversion-funnel';
 import { Modal } from './ui/modal';
 import { CostSettings } from './cost-settings';
 import { Button } from './ui/button';
@@ -880,42 +879,19 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                 <section className="panel funnel-panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>Do clique à conversão</h2>
-                      <p>Uma visão do seu funil no período.</p>
+                      <h2>
+                        Funil de conversão <span className="subtle-badge">META ADS</span>
+                      </h2>
+                      <p>Do primeiro clique à venda aprovada.</p>
                     </div>
                     <Activity size={16} className="muted" />
                   </div>
-                  <div className="funnel-steps">
-                    {[
-                      { label: 'Cliques', value: s.clicks, icon: MousePointer2 },
-                      { label: 'PageViews', value: s.pageviews, icon: Globe2 },
-                      { label: 'Checkouts', value: s.checkouts, icon: CreditCard },
-                      { label: 'Vendas', value: s.sales, icon: ShoppingBag },
-                    ].map((step, i) => (
-                      <div className="funnel-step" key={step.label}>
-                        <div className="funnel-step-top">
-                          <step.icon size={15} />
-                          <small>
-                            {i === 0
-                              ? '100%'
-                              : s.clicks
-                                ? percent((step.value / s.clicks) * 100)
-                                : '—'}
-                          </small>
-                        </div>
-                        <strong>{number(step.value)}</strong>
-                        <span>{step.label}</span>
-                        <div className="funnel-bar">
-                          <i
-                            style={{
-                              width: `${Math.min(100, Math.max(4, s.clicks ? (step.value / s.clicks) * 100 : 0))}%`,
-                              opacity: 1 - i * 0.18,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <ConversionFunnel
+                    clicks={s.clicks}
+                    pageviews={s.pageviews}
+                    checkouts={s.checkouts}
+                    sales={s.sales}
+                  />
                   <div className="panel-footnote">
                     Etapas agregadas; os eventos podem se repetir e não representam coortes únicas.
                   </div>

@@ -1156,46 +1156,69 @@ td small {
   grid-template-columns: 1.6fr 1fr;
   gap: 20px;
 }
-.funnel-steps {
+/* Continuous flow: the percentages stay legible even when the ribbon gets narrow. */
+.conversion-funnel {
+  position: relative;
+  margin: 25px 21px 21px;
+  height: 228px;
+}
+.conversion-funnel-plot {
+  position: absolute;
+  inset: 33px 0 27px;
+  overflow: hidden;
+}
+.conversion-funnel-plot svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.conversion-funnel-stages {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  padding: 25px 21px 23px;
-  gap: 19px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
-.funnel-step-top {
+.conversion-funnel-stages li {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  color: #749e95;
+  min-width: 0;
 }
-.funnel-step-top small {
-  font-size: 8px;
-  color: #779b8e;
+.conversion-funnel-stages li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 27px;
+  bottom: 21px;
+  width: 1px;
+  background: #8290b066;
 }
-.funnel-step > strong {
-  display: block;
-  font-size: 23px;
+.conversion-funnel-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #c7d2e5;
+  text-align: center;
+  white-space: nowrap;
+}
+.conversion-funnel-rate {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  text-shadow: 0 1px 8px #17233b;
+}
+.conversion-funnel-count {
+  margin-top: auto;
+  color: #c2cde0;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: -0.7px;
-}
-.funnel-step > span {
-  display: block;
-  margin-top: 7px;
-  color: #8193ab;
-  font-size: 9px;
-}
-.funnel-bar {
-  height: 5px;
-  background: #273344;
-  border-radius: 5px;
-  margin-top: 17px;
-}
-.funnel-bar i {
-  display: block;
-  height: 5px;
-  background: #79e0b7;
-  border-radius: 5px;
 }
 .panel-footnote {
   padding: 0 21px 17px;
@@ -2401,10 +2424,6 @@ td small {
   .panel-heading {
     padding-inline: 17px;
   }
-  .funnel-steps {
-    padding-inline: 17px;
-    gap: 13px;
-  }
   .filter-left {
     gap: 9px;
   }
@@ -2901,22 +2920,6 @@ td small {
   .bottom-grid {
     gap: 0;
   }
-  .funnel-steps {
-    padding: 23px 16px 20px;
-    gap: 13px;
-  }
-  .funnel-step > strong {
-    font-size: 21px;
-  }
-  .funnel-step > span {
-    font-size: 8px;
-  }
-  .funnel-step-top small {
-    font-size: 7px;
-  }
-  .funnel-step-top svg {
-    width: 13px;
-  }
   .panel-footnote {
     font-size: 7px;
     padding-inline: 16px;
@@ -3217,5 +3220,21 @@ td small {
   }
   .cost-settings form {
     padding: 22px 17px;
+  }
+}
+
+@media (max-width: 700px) {
+  .conversion-funnel {
+    margin: 23px 14px 19px;
+    height: 212px;
+  }
+  .conversion-funnel-label {
+    font-size: 8px;
+  }
+  .conversion-funnel-rate {
+    font-size: 17px;
+  }
+  .conversion-funnel-count {
+    font-size: 11px;
   }
 }
