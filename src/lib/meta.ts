@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { query } from './db';
 import { decrypt, HttpError } from './security';
+import { dateRange } from './format';
 const graph = () => `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v25.0'}`;
 export async function graphRequest<T = Record<string, unknown>>(
   path: string,
@@ -127,6 +128,7 @@ export async function syncMeta(workspaceId: string) {
    ON CONFLICT(workspace_id,external_id) DO UPDATE SET adset_id=$3,campaign_id=$4,name=$5,status=$6`,
         [workspaceId, a.id, a.adset_id, a.campaign_id, a.name, a.status],
       );
+    const { start, end } = dateRange(90);
     const insights = await graphAll<{
       ad_id: string;
       adset_id: string;
@@ -139,7 +141,8 @@ export async function syncMeta(workspaceId: string) {
       fields: 'ad_id,adset_id,campaign_id,spend,clicks,impressions',
       level: 'ad',
       time_increment: '1',
-      date_preset: 'last_90d',
+      // Explicit dates include today's partial results in the account's supported timezone.
+      time_range: JSON.stringify({ since: start, until: end }),
     });
     for (const i of insights)
       await query(
