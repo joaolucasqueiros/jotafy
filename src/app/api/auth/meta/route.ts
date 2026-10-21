@@ -1,18 +1,18 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { currentWorkspace } from '@/lib/auth';
-import { appUrl, encrypt, randomToken, HttpError } from '@/lib/security';
+import { encrypt, randomToken, HttpError } from '@/lib/security';
+import { metaOAuthConfig } from '@/lib/meta-oauth-config';
 import { handleError } from '@/lib/http';
 export async function GET(request: Request) {
+  let stage = 'configuration';
   try {
-    if (!process.env.META_APP_ID || !process.env.META_APP_SECRET)
-      throw new HttpError(
-        503,
-        'Configure META_APP_ID, META_APP_SECRET e ENCRYPTION_KEY no servidor.',
-      );
+    const config = metaOAuthConfig();
+    stage = 'session_lookup';
     const connect = new URL(request.url).searchParams.get('intent') === 'connect';
     const w = await currentWorkspace();
     if (connect && !w) throw new HttpError(401, 'Entre antes de conectar uma conta.');
+    stage = 'state_cookie';
     const state = randomToken();
     (await cookies()).set(
       'mt_oauth',
@@ -31,18 +31,17 @@ export async function GET(request: Request) {
         path: '/',
       },
     );
-    const url = new URL(
-      `https://www.facebook.com/${process.env.META_GRAPH_VERSION || 'v25.0'}/dialog/oauth`,
-    );
+    stage = 'redirect';
+    const url = new URL(`https://www.facebook.com/${config.version}/dialog/oauth`);
     url.search = new URLSearchParams({
-      client_id: process.env.META_APP_ID,
-      redirect_uri: `${appUrl()}/api/auth/meta/callback`,
+      client_id: config.appId,
+      redirect_uri: config.callbackUrl,
       state,
       response_type: 'code',
       scope: connect ? 'public_profile,email,ads_read,ads_management' : 'public_profile,email',
     }).toString();
     return NextResponse.redirect(url);
   } catch (e) {
-    return handleError(e);
+    return handleError(e, { operation: 'meta_oauth_start', stage });
   }
 }

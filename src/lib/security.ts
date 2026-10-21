@@ -23,8 +23,16 @@ export function verifyPassword(password: string, hash: string) {
 }
 function key() {
   const k = Buffer.from(process.env.ENCRYPTION_KEY || '', 'base64');
-  if (k.length !== 32) throw new Error('Configure ENCRYPTION_KEY com 32 bytes em base64.');
+  if (k.length !== 32)
+    throw new HttpError(
+      503,
+      'ENCRYPTION_KEY ausente ou inválida no servidor. Configure a chave original de 32 bytes em base64 nas variáveis de runtime do Cloudflare.',
+      'ENCRYPTION_KEY_INVALID',
+    );
   return k;
+}
+export function assertEncryptionConfigured() {
+  key();
 }
 export function encrypt(value: string) {
   const iv = randomBytes(12),
@@ -52,6 +60,7 @@ export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }

@@ -2,18 +2,33 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { appUrl, HttpError } from './security';
 import { query } from './db';
-export function handleError(error: unknown) {
+export function handleError(error: unknown, context?: { operation: string; stage: string }) {
   if (error instanceof HttpError)
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, ...(error.code ? { code: error.code } : {}) },
+      { status: error.status },
+    );
   if (error instanceof ZodError)
     return NextResponse.json(
       { error: error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') },
       { status: 400 },
     );
   const id = crypto.randomUUID();
-  console.error('request_failed', id, error instanceof Error ? error.name : 'UnknownError');
+  const candidate = error && typeof error === 'object' && 'code' in error ? error.code : null;
+  const errorCode =
+    typeof candidate === 'string' && /^[A-Z0-9_]{1,40}$/.test(candidate) ? candidate : undefined;
+  console.error('request_failed', {
+    requestId: id,
+    name: error instanceof Error ? error.name : 'UnknownError',
+    errorCode,
+    ...context,
+  });
   return NextResponse.json(
-    { error: 'Não foi possível concluir. Confira a configuração do serviço.', requestId: id },
+    {
+      error: 'Não foi possível concluir. Confira a configuração do serviço.',
+      requestId: id,
+      ...(context ? { operation: context.operation, stage: context.stage } : {}),
+    },
     { status: 500 },
   );
 }

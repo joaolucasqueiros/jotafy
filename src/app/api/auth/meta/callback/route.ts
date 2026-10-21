@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { currentWorkspace, createSession } from '@/lib/auth';
 import { appUrl, decrypt, encrypt, equal, randomToken, HttpError } from '@/lib/security';
 import { transaction, query } from '@/lib/db';
+import { metaOAuthConfig } from '@/lib/meta-oauth-config';
 import { graphRequest, discoverAccounts } from '@/lib/meta';
 export async function GET(request: Request) {
   try {
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
       return body;
     }
     const short = await exchange({
-      redirect_uri: `${appUrl()}/api/auth/meta/callback`,
+      redirect_uri: metaOAuthConfig().callbackUrl,
       code: params.get('code')!,
     });
     const long = await exchange({

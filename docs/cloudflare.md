@@ -58,3 +58,11 @@ WORKERS_DATABASE_TEST=1 npm run test:cloudflare
 O OpenNext seleciona a exportação `workerd` do `pg-cloudflare`. O trace do build Node do Next.js havia copiado somente a exportação padrão vazia, omitindo `dist/index.js`. Isso fazia o empacotamento falhar com `Could not resolve "pg-cloudflare"`. `outputFileTracingIncludes` em `next.config.ts` inclui explicitamente os arquivos do adaptador, sem ignorar o módulo nem desativar a validação.
 
 As versões de Next/OpenNext e o lockfile acompanham o repositório. Não use um `npx` sem versão para substituir o adaptador instalado durante o deploy. Caso o painel ainda mostre uma build antiga, selecione o commit mais recente de `main` e repita a implantação.
+
+## Diagnosticar a abertura do login Meta
+
+A rota `/api/auth/meta` valida as configurações antes de consultar a sessão e criar o cookie OAuth. Os códigos `META_APP_ID_MISSING`, `META_APP_ID_INVALID`, `META_APP_SECRET_MISSING`, `META_GRAPH_VERSION_INVALID`, `APP_URL_INVALID` e `ENCRYPTION_KEY_INVALID` identificam problemas nas variáveis de **runtime**, sem expor seus valores. Salve/publique as variáveis no Worker correspondente e reinicie a tentativa pelo botão do painel.
+
+`ENCRYPTION_KEY_INVALID` exige restaurar a chave original de 32 bytes em base64. Não gere outra chave se já há tokens de integrações armazenados. O cadastro por senha pode funcionar mesmo quando essa chave ainda está ausente, porque somente o fluxo de integrações usa criptografia de tokens/estado.
+
+Se um erro inesperado persistir, a resposta inclui `operation`, `stage` e `requestId`. Em Observability, procure esse requestId. `session_lookup` indica a consulta de sessão no banco; `state_cookie` identifica a criação do estado criptografado/cookie; `redirect` identifica a construção da resposta de redirecionamento. Os logs registram somente etapa, nome e código técnico do erro, sem corpo, senha, token, URL de conexão ou mensagem bruta do provedor. Um callback validado no painel Meta não comprova a disponibilidade dessas configurações no Worker.
