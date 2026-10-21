@@ -141,3 +141,5 @@ O Dockerfile permite construir uma imagem da aplicação e iniciar o worker com 
 
 Esta entrega é a base funcional da versão 1.0, não uma certificação de prontidão operacional. Ainda exige homologação dos provedores, revisão de segurança do deployment, configurações e políticas específicas do negócio. Não inclui cobrança de assinatura, recuperação de senha por e-mail, verificação de e-mail, equipes com múltiplos membros ou conectores Google/TikTok.
 <!-- Cloudflare: reenviar versão com diagnóstico de configuração do Meta OAuth. -->
+
+**Windows com dois cliques:** use [Atualizar-MetaTrack.cmd](Atualizar-MetaTrack.cmd) para processar a fila localmente uma vez. Veja [o passo a passo](docs/windows-worker.md).
