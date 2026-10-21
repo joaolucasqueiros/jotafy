@@ -25,7 +25,7 @@ Em outro terminal, no mesmo diretório:
 npm run worker
 ```
 
-O worker executa a fila e agenda sincronização das contas selecionadas a cada 15 minutos. Ele processa CAPI e a sincronização periódica sem navegador aberto. O botão Atualizar / Sincronizar Meta também processa seu próprio job no servidor web, sem depender do worker local. Alternativamente, agende `POST /api/jobs` com `Authorization: Bearer <CRON_SECRET>` a cada minuto. Use o worker dedicado para contas maiores, evitando o timeout do provedor serverless.
+O worker Node executa a fila e agenda sincronização das contas selecionadas a cada 15 minutos. O botão Atualizar / Sincronizar Meta enfileira o trabalho; a página acompanha seu estado e relê as métricas. Mantenha `npm run worker` ativo no computador durante testes ou em um serviço Node na produção. A sincronização pesada não roda dentro da requisição Cloudflare, evitando o erro 1102. O endpoint `/api/jobs` é uma alternativa autenticada somente quando hospedado em Node; no runtime Cloudflare ele retorna 503.
 
 Crie uma conta em `/login`, configure as integrações e use `/guide` como guia operacional. A migração é transacional, tem trava de concorrência e pode ser repetida.
 

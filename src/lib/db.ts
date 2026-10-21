@@ -1,7 +1,7 @@
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 const globalDb = globalThis as unknown as { db?: Pool };
-function isWorkersRuntime() {
+export function isWorkersRuntime() {
   return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers';
 }
 function createPool() {

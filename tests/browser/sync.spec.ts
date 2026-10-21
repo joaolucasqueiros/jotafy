@@ -15,7 +15,9 @@ test('Update requests Meta sync before reading metrics and shows provider failur
     expect(registration.ok()).toBeTruthy();
     let clicks = 10,
       visits = 7,
-      fail = false;
+      fail = false,
+      enqueue = false,
+      workerDone = false;
     const sequence: string[] = [];
     await page.route('**/api/dashboard?*', async (route) => {
       sequence.push('dashboard');
@@ -49,8 +51,38 @@ test('Update requests Meta sync before reading metrics and shows provider failur
         },
       });
     });
-    await page.route('**/api/meta/sync', async (route) => {
+    await page.route('**/api/meta/sync*', async (route) => {
+      if (route.request().method() === 'GET') {
+        sequence.push('poll');
+        if (workerDone) {
+          clicks = 44;
+          visits = 31;
+        }
+        await route.fulfill({
+          json: {
+            ok: true,
+            pending: !workerDone,
+            state: workerDone ? 'completed' : 'queued',
+            jobId: '00000000-0000-4000-8000-000000000001',
+            message: workerDone ? 'Meta sincronizada.' : 'Aguardando o serviço de sincronização.',
+          },
+        });
+        return;
+      }
       sequence.push('sync');
+      if (enqueue && !fail) {
+        await route.fulfill({
+          status: 202,
+          json: {
+            ok: true,
+            pending: true,
+            state: 'queued',
+            jobId: '00000000-0000-4000-8000-000000000001',
+            message: 'Aguardando o serviço de sincronização.',
+          },
+        });
+        return;
+      }
       if (fail) await route.fulfill({ status: 502, json: { error: 'Token de teste expirado' } });
       else {
         clicks = 22;
@@ -60,6 +92,7 @@ test('Update requests Meta sync before reading metrics and shows provider failur
     });
     await page.clock.install();
     await page.goto('/');
+    await page.clock.runFor(250);
     const counts = page.locator('[data-canvas-id="funnel"] .conversion-funnel-count');
     await expect(counts.nth(0)).toHaveText('10');
     await expect(page.locator('[data-canvas-id^="financial-"]')).toHaveCount(13);
@@ -74,10 +107,21 @@ test('Update requests Meta sync before reading metrics and shows provider failur
     await expect(counts.nth(0)).toHaveText('30');
     await expect(counts.nth(1)).toHaveText('21');
     expect(sequence.filter((entry) => entry === 'sync')).toHaveLength(1);
+    enqueue = true;
+    await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+    await expect(page.locator('.sync-pending-notice')).toContainText('Aguardando o serviço');
+    await page.clock.fastForward(31000);
+    await expect(counts.nth(0)).toHaveText('30');
+    expect(sequence.filter((entry) => entry === 'sync')).toHaveLength(2);
+    workerDone = true;
+    await page.clock.fastForward(31000);
+    await expect(counts.nth(0)).toHaveText('44');
+    await expect(counts.nth(1)).toHaveText('31');
+    await expect(page.locator('.sync-pending-notice')).toHaveCount(0);
     fail = true;
     await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
     await expect(page.locator('.sync-error-notice')).toContainText('Token de teste expirado');
-    await expect(counts.nth(0)).toHaveText('30');
+    await expect(counts.nth(0)).toHaveText('44');
   } finally {
     await pool.query('DELETE FROM users WHERE email=$1', [email]);
     await pool.end();

@@ -165,14 +165,7 @@ publique e reinicie o worker. Configure o e-mail, o segredo e o webhook na Cakto
 
 ### Atualização dos números e editor visual
 
-Atualizar e Sincronizar Meta consultam a Meta no servidor através de um job limitado
-ao workspace autenticado; não executam CAPI nem jobs de outros workspaces. A fila
-coordena a execução com o worker e evita duas sincronizações simultâneas do mesmo
-workspace. Pedidos manuais no mesmo minuto reutilizam o job. Erros do provedor são
-mostrados no painel. A tela visível consulta o banco a cada 30 segundos; se a última
-sincronização tem pelo menos 15 minutos, também solicita uma atualização à Meta.
-O período relativo muda automaticamente na virada do dia de São Paulo. Os números
-ainda dependem do atraso de processamento e das permissões da própria Meta.
+Atualizar e Sincronizar Meta apenas enfileiram/reutilizam um job do workspace autenticado. O serviço Node (`npm run worker`) consulta a Meta, atualiza a fila e grava as métricas. A rota web não executa Graph nem CAPI. O acompanhamento autenticado por `jobId` é limitado ao próprio workspace e não cria outra tarefa a cada consulta. A tela visível relê dados e estado a cada 30 segundos, e solicita atualização quando os dados têm pelo menos 15 minutos. Sem worker, exibe que aguarda o serviço. Erros HTML da infraestrutura são convertidos em mensagens legíveis, incluindo o erro 1102. O período relativo acompanha a virada do dia de São Paulo. Os números dependem da disponibilidade e do atraso dos dados da Meta.
 
 Em **Editar layout visual**, arraste a barra verde de cada card, gráfico ou bloco.
 Cantos e bordas alteram largura e altura; a grade ajusta os elementos para evitar
@@ -182,3 +175,21 @@ para voltar ao layout anterior. As dimensões e posições ficam em localStorage
 workspace/navegador, sem alterar os dados. No celular a ordem é preservada em uma
 lista responsiva; arraste e redimensionamento estão disponíveis no computador.
 Opções de exibição preserva controles de teclado para ordem e largura dos grupos.
+
+### Retomada de sincronizações interrompidas
+
+Os jobs usam um bloqueio de dois minutos, renovado a cada página consultada e
+antes dos lotes de escrita. Uma execução interrompida deixa de impedir a próxima
+atualização após esse prazo. A tentativa atual é validada antes das gravações,
+da conclusão e do registro de erro: uma execução antiga não pode sobrescrever
+a que a retomou. A trava por workspace também cobre os lotes de gravação.
+
+Campanhas, conjuntos e anúncios são gravados por conjuntos JSON; insights usam
+lotes de até 500 registros. Uma transação por conta evita gravação parcial daquela
+conta. Dados da Meta são buscados antes de abrir a transação. O horário de última
+sincronização só avança após todas as contas concluírem.
+
+Uma resposta 202 significa trabalho pendente, não sucesso de importação. Ela
+inclui `jobId` e `lockedUntil`. A tela verifica o estado a cada 30 segundos; o worker é responsável pela retomada e pelas tentativas. Bloqueios já criados pela
+versão antiga continuam válidos até seu vencimento original de 20 minutos; não
+são cancelados à força durante a atualização. Reinicie workers antigos ao publicar.

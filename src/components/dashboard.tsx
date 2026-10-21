@@ -214,6 +214,9 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
   const refreshing = useRef(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
+  const [syncPending, setSyncPending] = useState(false);
+  const [syncJobId, setSyncJobId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState('');
   function notify(message: string) {
     setToast(message);
   }
@@ -247,11 +250,19 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
         setSyncing(true);
         setSyncError('');
         try {
-          const result = await api('/api/meta/sync', {});
+          const result =
+            syncPending && syncJobId
+              ? await api(`/api/meta/sync?jobId=${encodeURIComponent(syncJobId)}`)
+              : await api('/api/meta/sync', {});
+          setSyncPending(!!result.pending);
+          setSyncJobId(result.pending ? result.jobId || null : null);
+          setSyncMessage(result.message || '');
+          setSyncError(result.lastError || (result.state === 'failed' ? result.message : ''));
           if (!quiet) notify(result.message);
         } catch (error) {
           const message = (error as Error).message;
           setSyncError(message);
+          setSyncPending(false);
           if (!quiet) notify(message);
         }
       }
@@ -303,7 +314,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
         }
       }
       const stale = !data.lastSync || Date.now() - Date.parse(data.lastSync) >= 15 * 60000;
-      void refresh(stale && data.metaConnected, true);
+      void refresh((syncPending || (stale && !syncError)) && data.metaConnected, true);
     }, 30000);
     return () => clearInterval(timer);
   }, [
@@ -312,6 +323,9 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     period,
     data.lastSync,
     data.metaConnected,
+    syncPending,
+    syncJobId,
+    syncError,
     range.start,
     range.end,
     campaign,
@@ -626,12 +640,6 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               </p>
             </div>
             <div className="heading-actions">
-              {syncError && (
-                <div className="sync-error-notice" role="status">
-                  Não foi possível atualizar a Meta: {syncError}. Os valores exibidos são da última
-                  sincronização concluída.
-                </div>
-              )}
               {tab === 'overview' && (
                 <DashboardLayoutSettings controller={layout} notify={notify} />
               )}
@@ -654,6 +662,18 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               )}
             </div>
           </div>
+          {syncPending && !syncError && (
+            <div className="sync-pending-notice" role="status">
+              {syncMessage || 'Sincronização da Meta em andamento.'} O painel verifica a conclusão a
+              cada 30 segundos.
+            </div>
+          )}
+          {syncError && (
+            <div className="sync-error-notice" role="status">
+              Não foi possível atualizar a Meta: {syncError}. Confira a última sincronização antes
+              de usar os números.
+            </div>
+          )}
           {demo && (
             <div className="demo-banner">
               <span className="demo-badge">

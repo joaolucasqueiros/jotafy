@@ -8,7 +8,7 @@ const { encrypt, randomToken } = await import('../src/lib/security');
 const { normalizeCakto } = await import('../src/lib/cakto');
 const { ingestCakto } = await import('../src/lib/orders');
 const { dashboard } = await import('../src/lib/dashboard');
-const { runJobs } = await import('../src/lib/jobs');
+const { runJobs, renewJobLease } = await import('../src/lib/jobs');
 const { rateLimit } = await import('../src/lib/http');
 const { verifyRelaySignature } = await import('../src/lib/signature');
 const ids: string[] = [];
@@ -302,6 +302,125 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
       }
     },
   );
+  await t.test(
+    'leases renew only for the current owner and expired leases cannot be revived',
+    async () => {
+      const lw = await workspace();
+      const [job] = await query(
+        "INSERT INTO jobs(workspace_id,kind,dedupe_key,status,attempts,locked_until) VALUES($1,'meta_sync','lease','running',2,now()+interval '30 seconds') RETURNING id",
+        [lw.id],
+      );
+      await assert.rejects(() => renewJobLease(job.id, 1), /perdeu o bloqueio/);
+      await renewJobLease(job.id, 2);
+      const [fresh] = await query(
+        'SELECT EXTRACT(EPOCH FROM (locked_until-now()))::float8 AS seconds FROM jobs WHERE id=$1',
+        [job.id],
+      );
+      assert(fresh.seconds > 110 && fresh.seconds <= 120);
+      await query("UPDATE jobs SET locked_until=now()-interval '1 second' WHERE id=$1", [job.id]);
+      await assert.rejects(() => renewJobLease(job.id, 2), /perdeu o bloqueio/);
+      await query('DELETE FROM jobs WHERE id=$1', [job.id]);
+    },
+  );
+  await t.test(
+    'expired sync recovers, writes paginated insights in batches and fences obsolete attempts',
+    async () => {
+      const sw = await workspace();
+      await query(
+        "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_456','Bulk Account','BRL','America/Sao_Paulo',true)",
+        [sw.id],
+      );
+      await query(
+        "INSERT INTO meta_connections(workspace_id,meta_user_id,token,expires_at) VALUES($1,'bulk-user',$2,now()+interval '1 day')",
+        [sw.id, encrypt('bulk-test-token')],
+      );
+      const [job] = await query(
+        "INSERT INTO jobs(workspace_id,kind,dedupe_key,status,attempts,locked_until) VALUES($1,'meta_sync','recover','running',1,now()-interval '1 second') RETURNING id",
+        [sw.id],
+      );
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      let obsolete: string | null = null;
+      const fetchMock = mock.method(globalThis, 'fetch', async (input: URL | Request | string) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith('/campaigns'))
+          return Response.json({
+            data: [
+              { id: '777', name: obsolete ? 'Obsolete name' : 'Bulk campaign', status: 'ACTIVE' },
+            ],
+          });
+        if (url.pathname.endsWith('/adsets') || url.pathname.endsWith('/ads'))
+          return Response.json({ data: [] });
+        assert(url.pathname.endsWith('/insights'));
+        if (obsolete) {
+          await query(
+            "UPDATE jobs SET attempts=attempts+1,locked_until=now()+interval '2 minutes' WHERE id=$1",
+            [obsolete],
+          );
+          return Response.json({ data: [] });
+        }
+        const offset = Number(url.searchParams.get('after') || '0');
+        const rows = Array.from({ length: Math.min(100, 601 - offset) }, (_, index) => ({
+          ad_id: `ad-${index + offset}`,
+          adset_id: 'set',
+          campaign_id: '777',
+          date_start: day,
+          spend: '1.00',
+          inline_link_clicks: '11',
+          impressions: '100',
+          actions: [{ action_type: 'landing_page_view', value: '8' }],
+        }));
+        // A provider page may overlap; the batch upsert must not count a row twice.
+        if (offset === 600) rows.push({ ...rows[0], ad_id: 'ad-0' });
+        return Response.json({
+          data: rows,
+          ...(offset + 100 < 601
+            ? {
+                paging: {
+                  next: 'https://graph.facebook.com/next',
+                  cursors: { after: String(offset + 100) },
+                },
+              }
+            : {}),
+        });
+      });
+      try {
+        assert.deepEqual(await runJobs(1, { workspaceId: sw.id, jobId: job.id }), {
+          completed: 1,
+          failed: 0,
+        });
+        const [finished] = await query('SELECT attempts,status FROM jobs WHERE id=$1', [job.id]);
+        assert.equal(finished.attempts, 2);
+        assert.equal(finished.status, 'completed');
+        const [totals] = await query(
+          'SELECT count(*)::int AS count,sum(clicks)::int AS clicks,sum(landing_page_views)::int AS visits FROM ad_insights WHERE workspace_id=$1',
+          [sw.id],
+        );
+        assert.deepEqual(totals, { count: 601, clicks: 6611, visits: 4808 });
+        const [next] = await query(
+          "INSERT INTO jobs(workspace_id,kind,dedupe_key) VALUES($1,'meta_sync','obsolete') RETURNING id",
+          [sw.id],
+        );
+        obsolete = next.id;
+        assert.deepEqual(await runJobs(1, { workspaceId: sw.id, jobId: next.id }), {
+          completed: 0,
+          failed: 1,
+        });
+        const [newOwner] = await query('SELECT attempts,status,last_error FROM jobs WHERE id=$1', [
+          next.id,
+        ]);
+        assert.equal(newOwner.attempts, 2);
+        assert.equal(newOwner.status, 'running');
+        assert.equal(newOwner.last_error, null);
+        assert.equal(
+          (await query('SELECT name FROM campaigns WHERE workspace_id=$1', [sw.id]))[0].name,
+          'Bulk campaign',
+        );
+        await query('DELETE FROM jobs WHERE id=$1', [next.id]);
+      } finally {
+        fetchMock.mock.restore();
+      }
+    },
+  );
   await t.test('unconfigured CAPI is retried and never marked delivered', async () => {
     await runJobs(5);
     const jobs = await query('SELECT status,attempts,last_error FROM jobs WHERE workspace_id=$1', [
@@ -413,6 +532,55 @@ test(
     assert.equal(save.status, 200);
     const integration = await (await call('/api/integrations', undefined, cookie)).json();
     assert(!JSON.stringify(integration).includes(secret));
+    const [httpWorkspace] = await query('SELECT id FROM workspaces WHERE user_id=$1', [u.id]);
+    // The web route must not decrypt tokens or run Graph work: even this opaque token can enqueue.
+    await query(
+      "INSERT INTO meta_connections(workspace_id,meta_user_id,token,expires_at) VALUES($1,'http-meta','opaque-token-only-node-may-decrypt',now()+interval '1 day')",
+      [httpWorkspace.id],
+    );
+    const queuedResponse = await call('/api/meta/sync', {}, cookie);
+    assert.equal(queuedResponse.status, 202);
+    const queued = await queuedResponse.json();
+    assert.equal(queued.state, 'queued');
+    const again = await (await call('/api/meta/sync', {}, cookie)).json();
+    assert.equal(again.jobId, queued.jobId);
+    assert.equal(
+      (
+        await query(
+          "SELECT count(*)::int AS count FROM jobs WHERE workspace_id=$1 AND kind='meta_sync'",
+          [httpWorkspace.id],
+        )
+      )[0].count,
+      1,
+    );
+    const progress = await (
+      await call(`/api/meta/sync?jobId=${queued.jobId}`, undefined, cookie)
+    ).json();
+    assert.equal(progress.pending, true);
+    assert.equal(progress.state, 'queued');
+    const foreignWorkspace = await workspace();
+    const [foreignJob] = await query(
+      "INSERT INTO jobs(workspace_id,kind,dedupe_key) VALUES($1,'meta_sync','foreign-http') RETURNING id",
+      [foreignWorkspace.id],
+    );
+    assert.equal(
+      (await call(`/api/meta/sync?jobId=${foreignJob.id}`, undefined, cookie)).status,
+      404,
+    );
+    assert.equal(
+      (await call('/api/meta/sync?jobId=------------------------------------', undefined, cookie))
+        .status,
+      400,
+    );
+    await query("UPDATE jobs SET status='completed',completed_at=now() WHERE id=$1", [
+      queued.jobId,
+    ]);
+    const done = await (
+      await call(`/api/meta/sync?jobId=${queued.jobId}`, undefined, cookie)
+    ).json();
+    assert.equal(done.pending, false);
+    assert.equal(done.state, 'completed');
+    await query('DELETE FROM jobs WHERE id=$1', [foreignJob.id]);
     const costs = {
       salesTaxBps: 600,
       feeBps: 500,
