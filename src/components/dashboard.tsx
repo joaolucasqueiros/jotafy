@@ -50,6 +50,12 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api } from '@/lib/client-api';
+import {
+  DashboardLayoutSettings,
+  LayoutSection,
+  OverviewLayout,
+  useDashboardLayout,
+} from './dashboard-layout';
 import { ConversionFunnel } from './conversion-funnel';
 import { Modal } from './ui/modal';
 import { CostSettings } from './cost-settings';
@@ -373,6 +379,9 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
       ),
     [data.sales, saleStatus, search],
   );
+  const layout = useDashboardLayout(
+    data.workspaceId || (demo ? 'demo' : `workspace:${data.workspace}`),
+  );
   const s = data.summary,
     margin = s.revenue ? (s.profit / s.revenue) * 100 : 0;
   const title =
@@ -571,6 +580,9 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               </p>
             </div>
             <div className="heading-actions">
+              {tab === 'overview' && (
+                <DashboardLayoutSettings controller={layout} notify={notify} />
+              )}
               {demo ? (
                 <Link href="/login" className="button button-primary">
                   <Plus size={16} />
@@ -752,323 +764,342 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                       : 'Aguardando primeira sincronização'}
                 </small>
               </div>
-              <div className="metric-grid">
-                {metrics.map((m) => (
-                  <div className={`metric-card ${m.color}`} key={m.label}>
-                    <div className="metric-top">
-                      <span>{m.label}</span>
-                      <span className="metric-icon">
-                        <m.icon size={17} />
-                      </span>
-                    </div>
-                    <strong>{m.value}</strong>
-                    <div className="metric-note">{m.note}</div>
-                  </div>
-                ))}
-              </div>
-              {data.financials && (
-                <section className="panel" style={{ marginTop: 20, marginBottom: 20 }}>
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Financeiro Cakto</h2>
-                      <p>
-                        Vendas no período selecionado; não representa saldo disponível para saque.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="metric-grid" style={{ padding: 20 }}>
-                    {[
-                      [
-                        'Bruto de vendas',
-                        data.financials.gross,
-                        'Aprovadas, reembolsadas e chargebacks; exclui pendentes',
-                      ],
-                      [
-                        data.financials.netEstimated
-                          ? 'Líquido estimado'
-                          : 'Líquido informado pela Cakto',
-                        data.financials.net,
-                        `${data.financials.confirmedNetOrders} de ${s.sales} vendas com comissão identificada`,
-                      ],
-                      [
-                        data.financials.feesEstimated
-                          ? 'Taxas da plataforma · estimadas em parte'
-                          : 'Taxas informadas pela Cakto',
-                        data.financials.fees,
-                        'Taxas reais quando recebidas; configuração para valores ausentes',
-                      ],
-                      ['Vendas pendentes', data.financials.pending, 'Não incluídas no faturamento'],
-                      [
-                        'Reembolsos',
-                        data.financials.refunded,
-                        'Pedidos reembolsados no grupo de vendas do período',
-                      ],
-                      [
-                        'Chargebacks',
-                        data.financials.chargebackAmount,
-                        'Pedidos contestados; excluídos do líquido',
-                      ],
-                      [
-                        'Ticket médio aprovado',
-                        data.financials.ticket,
-                        'Faturamento aprovado atual ÷ vendas aprovadas',
-                      ],
-                      [
-                        'Impostos sobre vendas',
-                        data.financials.taxes,
-                        'Estimativa conforme configuração',
-                      ],
-                      [
-                        'Imposto sobre anúncios',
-                        data.financials.adTax,
-                        'Estimativa conforme configuração',
-                      ],
-                      [
-                        'Custo dos produtos',
-                        data.financials.products,
-                        'Custo configurado por venda aprovada',
-                      ],
-                      [
-                        'Despesas adicionais',
-                        data.financials.expenses,
-                        'Despesas diárias; não rateadas com filtro de campanha',
-                      ],
-                    ].map(([label, value, note]) => (
-                      <div className="metric-card" key={String(label)}>
+              <OverviewLayout preferences={layout.preferences}>
+                <LayoutSection id="metrics">
+                  <div className="metric-grid">
+                    {metrics.map((m) => (
+                      <div className={`metric-card ${m.color}`} key={m.label}>
                         <div className="metric-top">
-                          <span>{label}</span>
+                          <span>{m.label}</span>
+                          <span className="metric-icon">
+                            <m.icon size={17} />
+                          </span>
                         </div>
-                        <strong>{money(Number(value))}</strong>
-                        <div className="metric-note">{note}</div>
+                        <strong>{m.value}</strong>
+                        <div className="metric-note">{m.note}</div>
                       </div>
                     ))}
                   </div>
-                  <div className="bottom-grid" style={{ padding: 20 }}>
-                    <div className="table-scroll">
-                      <h3>Vendas por produto</h3>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>PRODUTO</th>
-                            <th>APROVADAS</th>
-                            <th>FATURAMENTO</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.financials.productsSummary.map((product) => (
-                            <tr key={product.name}>
-                              <td>{product.name}</td>
-                              <td>{product.sales}</td>
-                              <td>{money(product.revenue)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {!data.financials.productsSummary.length && (
-                        <p>Nenhuma venda aprovada no período.</p>
-                      )}
-                    </div>
-                    <div className="table-scroll">
-                      <h3>Aprovação por pagamento</h3>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>MEIO</th>
-                            <th>APROVADOS / PEDIDOS</th>
-                            <th>TAXA</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.financials.paymentSummary.map((payment) => (
-                            <tr key={payment.method}>
-                              <td>{payment.method}</td>
-                              <td>
-                                {payment.approved} / {payment.total}
-                              </td>
-                              <td>{percent(payment.rate)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <p>
-                        Inclui pedidos aprovados posteriormente reembolsados quando há data de
-                        aprovação registrada.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="panel-footnote">
-                    Líquido confirmado usa sua comissão no webhook, sem descontar as taxas
-                    novamente. Estimativas não incluem comissões desconhecidas. ROAS usa faturamento
-                    aprovado antes de custos.
-                  </div>
-                </section>
-              )}
-              <div className="secondary-metrics">
-                <div>
-                  <span className="secondary-icon">
-                    <ShoppingBag size={18} />
-                  </span>
-                  <span>
-                    <small>Vendas aprovadas</small>
-                    <strong>
-                      {number(s.sales)}
-                      <em>pedidos confirmados</em>
-                    </strong>
-                  </span>
-                </div>
-                <div>
-                  <span className="secondary-icon">
-                    <Target size={18} />
-                  </span>
-                  <span>
-                    <small>CPA real</small>
-                    <strong>
-                      {money(s.cpa)}
-                      <em>por venda aprovada</em>
-                    </strong>
-                  </span>
-                </div>
-                <div>
-                  <span className="secondary-icon">
-                    <ArrowDownLeft size={18} />
-                  </span>
-                  <span>
-                    <small>Taxa de reembolso</small>
-                    <strong>
-                      {percent(s.refundRate)}
-                      <em>{money(s.refunded)} reembolsados</em>
-                    </strong>
-                  </span>
-                </div>
-                <div>
-                  <span className="secondary-icon">
-                    <MousePointer2 size={18} />
-                  </span>
-                  <span>
-                    <small>Vendas atribuídas</small>
-                    <strong>
-                      {s.sales ? percent((s.attributed / s.sales) * 100) : '—'}
-                      <em>{number(s.attributed)} com origem identificada</em>
-                    </strong>
-                  </span>
-                </div>
-              </div>
-              <div className="chart-grid">
-                <section className="panel performance-panel">
-                  <div className="panel-heading">
+                </LayoutSection>
+                <LayoutSection id="financials">
+                  {data.financials && (
+                    <section className="panel">
+                      <div className="panel-heading">
+                        <div>
+                          <h2>Financeiro Cakto</h2>
+                          <p>
+                            Vendas no período selecionado; não representa saldo disponível para
+                            saque.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="metric-grid" style={{ padding: 20 }}>
+                        {[
+                          [
+                            'Bruto de vendas',
+                            data.financials.gross,
+                            'Aprovadas, reembolsadas e chargebacks; exclui pendentes',
+                          ],
+                          [
+                            data.financials.netEstimated
+                              ? 'Líquido estimado'
+                              : 'Líquido informado pela Cakto',
+                            data.financials.net,
+                            `${data.financials.confirmedNetOrders} de ${s.sales} vendas com comissão identificada`,
+                          ],
+                          [
+                            data.financials.feesEstimated
+                              ? 'Taxas da plataforma · estimadas em parte'
+                              : 'Taxas informadas pela Cakto',
+                            data.financials.fees,
+                            'Taxas reais quando recebidas; configuração para valores ausentes',
+                          ],
+                          [
+                            'Vendas pendentes',
+                            data.financials.pending,
+                            'Não incluídas no faturamento',
+                          ],
+                          [
+                            'Reembolsos',
+                            data.financials.refunded,
+                            'Pedidos reembolsados no grupo de vendas do período',
+                          ],
+                          [
+                            'Chargebacks',
+                            data.financials.chargebackAmount,
+                            'Pedidos contestados; excluídos do líquido',
+                          ],
+                          [
+                            'Ticket médio aprovado',
+                            data.financials.ticket,
+                            'Faturamento aprovado atual ÷ vendas aprovadas',
+                          ],
+                          [
+                            'Impostos sobre vendas',
+                            data.financials.taxes,
+                            'Estimativa conforme configuração',
+                          ],
+                          [
+                            'Imposto sobre anúncios',
+                            data.financials.adTax,
+                            'Estimativa conforme configuração',
+                          ],
+                          [
+                            'Custo dos produtos',
+                            data.financials.products,
+                            'Custo configurado por venda aprovada',
+                          ],
+                          [
+                            'Despesas adicionais',
+                            data.financials.expenses,
+                            'Despesas diárias; não rateadas com filtro de campanha',
+                          ],
+                        ].map(([label, value, note]) => (
+                          <div className="metric-card" key={String(label)}>
+                            <div className="metric-top">
+                              <span>{label}</span>
+                            </div>
+                            <strong>{money(Number(value))}</strong>
+                            <div className="metric-note">{note}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="bottom-grid" style={{ padding: 20 }}>
+                        <div className="table-scroll">
+                          <h3>Vendas por produto</h3>
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>PRODUTO</th>
+                                <th>APROVADAS</th>
+                                <th>FATURAMENTO</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {data.financials.productsSummary.map((product) => (
+                                <tr key={product.name}>
+                                  <td>{product.name}</td>
+                                  <td>{product.sales}</td>
+                                  <td>{money(product.revenue)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {!data.financials.productsSummary.length && (
+                            <p>Nenhuma venda aprovada no período.</p>
+                          )}
+                        </div>
+                        <div className="table-scroll">
+                          <h3>Aprovação por pagamento</h3>
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>MEIO</th>
+                                <th>APROVADOS / PEDIDOS</th>
+                                <th>TAXA</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {data.financials.paymentSummary.map((payment) => (
+                                <tr key={payment.method}>
+                                  <td>{payment.method}</td>
+                                  <td>
+                                    {payment.approved} / {payment.total}
+                                  </td>
+                                  <td>{percent(payment.rate)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <p>
+                            Inclui pedidos aprovados posteriormente reembolsados quando há data de
+                            aprovação registrada.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="panel-footnote">
+                        Líquido confirmado usa sua comissão no webhook, sem descontar as taxas
+                        novamente. Estimativas não incluem comissões desconhecidas. ROAS usa
+                        faturamento aprovado antes de custos.
+                      </div>
+                    </section>
+                  )}
+                </LayoutSection>
+                <LayoutSection id="secondary">
+                  <div className="secondary-metrics">
                     <div>
-                      <h2>
-                        Desempenho de vendas<span className="subtle-badge">BRL</span>
-                      </h2>
-                      <p>O retorno real do seu investimento, dia a dia.</p>
-                    </div>
-                    <span className="chart-period">
-                      {period === 'custom'
-                        ? 'Personalizado'
-                        : Number(period) === 1
-                          ? 'Hoje'
-                          : `Últimos ${period} dias`}
-                      <ChevronDown size={13} />
-                    </span>
-                  </div>
-                  <div className="chart-total">
-                    <strong>{money(s.revenue)}</strong>
-                    <span>em vendas aprovadas</span>
-                  </div>
-                  <RevenueChart data={data.series} />
-                </section>
-                <section className="panel attribution-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Atribuição de vendas</h2>
-                      <p>Saiba de onde vem seu resultado.</p>
-                    </div>
-                    <Target size={17} className="muted" />
-                  </div>
-                  <AttributionChart attributed={s.attributed} unattributed={s.unattributed} />
-                  <div className="attribution-legend">
-                    <div>
-                      <i />
-                      <span>Meta Ads</span>
-                      <strong>{number(s.attributed)}</strong>
+                      <span className="secondary-icon">
+                        <ShoppingBag size={18} />
+                      </span>
+                      <span>
+                        <small>Vendas aprovadas</small>
+                        <strong>
+                          {number(s.sales)}
+                          <em>pedidos confirmados</em>
+                        </strong>
+                      </span>
                     </div>
                     <div>
-                      <i />
-                      <span>Sem atribuição</span>
-                      <strong>{number(s.unattributed)}</strong>
+                      <span className="secondary-icon">
+                        <Target size={18} />
+                      </span>
+                      <span>
+                        <small>CPA real</small>
+                        <strong>
+                          {money(s.cpa)}
+                          <em>por venda aprovada</em>
+                        </strong>
+                      </span>
                     </div>
-                  </div>
-                  <div className="attribution-foot">
-                    <ShieldCheck size={14} />
-                    UTMs + dados de clique no servidor
-                  </div>
-                </section>
-              </div>
-              <CampaignTable
-                campaigns={data.campaigns.slice(0, 4)}
-                overview
-                onAll={() => changeTab('campaigns')}
-                onManage={(c, a) => {
-                  setModal({ campaign: c, action: a });
-                  setBudget(String((c.dailyBudget || 0) / 100));
-                }}
-              />
-              <div className="bottom-grid">
-                <section className="panel funnel-panel">
-                  <div className="panel-heading">
                     <div>
-                      <h2>
-                        Funil de conversão <span className="subtle-badge">META ADS</span>
-                      </h2>
-                      <p>Do primeiro clique à venda aprovada.</p>
+                      <span className="secondary-icon">
+                        <ArrowDownLeft size={18} />
+                      </span>
+                      <span>
+                        <small>Taxa de reembolso</small>
+                        <strong>
+                          {percent(s.refundRate)}
+                          <em>{money(s.refunded)} reembolsados</em>
+                        </strong>
+                      </span>
                     </div>
-                    <Activity size={16} className="muted" />
+                    <div>
+                      <span className="secondary-icon">
+                        <MousePointer2 size={18} />
+                      </span>
+                      <span>
+                        <small>Vendas atribuídas</small>
+                        <strong>
+                          {s.sales ? percent((s.attributed / s.sales) * 100) : '—'}
+                          <em>{number(s.attributed)} com origem identificada</em>
+                        </strong>
+                      </span>
+                    </div>
                   </div>
-                  <ConversionFunnel
-                    clicks={s.clicks}
-                    pageviews={s.pageviews}
-                    checkouts={s.checkouts}
-                    sales={s.sales}
+                </LayoutSection>
+                <LayoutSection id="performance">
+                  <section className="panel performance-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>
+                          Desempenho de vendas<span className="subtle-badge">BRL</span>
+                        </h2>
+                        <p>O retorno real do seu investimento, dia a dia.</p>
+                      </div>
+                      <span className="chart-period">
+                        {period === 'custom'
+                          ? 'Personalizado'
+                          : Number(period) === 1
+                            ? 'Hoje'
+                            : `Últimos ${period} dias`}
+                        <ChevronDown size={13} />
+                      </span>
+                    </div>
+                    <div className="chart-total">
+                      <strong>{money(s.revenue)}</strong>
+                      <span>em vendas aprovadas</span>
+                    </div>
+                    <RevenueChart data={data.series} />
+                  </section>
+                </LayoutSection>
+                <LayoutSection id="attribution">
+                  <section className="panel attribution-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>Atribuição de vendas</h2>
+                        <p>Saiba de onde vem seu resultado.</p>
+                      </div>
+                      <Target size={17} className="muted" />
+                    </div>
+                    <AttributionChart attributed={s.attributed} unattributed={s.unattributed} />
+                    <div className="attribution-legend">
+                      <div>
+                        <i />
+                        <span>Meta Ads</span>
+                        <strong>{number(s.attributed)}</strong>
+                      </div>
+                      <div>
+                        <i />
+                        <span>Sem atribuição</span>
+                        <strong>{number(s.unattributed)}</strong>
+                      </div>
+                    </div>
+                    <div className="attribution-foot">
+                      <ShieldCheck size={14} />
+                      UTMs + dados de clique no servidor
+                    </div>
+                  </section>
+                </LayoutSection>
+                <LayoutSection id="campaigns">
+                  <CampaignTable
+                    campaigns={data.campaigns.slice(0, 4)}
+                    overview
+                    onAll={() => changeTab('campaigns')}
+                    onManage={(c, a) => {
+                      setModal({ campaign: c, action: a });
+                      setBudget(String((c.dailyBudget || 0) / 100));
+                    }}
                   />
-                  <div className="panel-footnote">
-                    Cliques no link e visitas de destino: Meta Ads. Checkouts: pixel MetaTrack.
-                    Vendas: Cakto. Etapas agregadas, sem visitantes únicos.
-                  </div>
-                </section>
-                <section className="panel connection-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Saúde das integrações</h2>
-                      <p>Os pontos de conexão da sua operação.</p>
+                </LayoutSection>
+                <LayoutSection id="funnel">
+                  <section className="panel funnel-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>
+                          Funil de conversão <span className="subtle-badge">META ADS</span>
+                        </h2>
+                        <p>Do primeiro clique à venda aprovada.</p>
+                      </div>
+                      <Activity size={16} className="muted" />
                     </div>
-                    <span className="connection-count">
-                      {Number(data.metaConnected) + Number(data.caktoConnected)}/2
-                    </span>
-                  </div>
-                  <div className="health-item">
-                    <span className="meta-icon">∞</span>
-                    <span>
-                      <strong>Meta Ads</strong>
-                      <small>Campanhas e investimento</small>
-                    </span>
-                    <span className={`status-dot ${data.metaConnected ? 'connected' : ''}`} />
-                    <small>{data.metaConnected ? 'Conectado' : 'Não conectado'}</small>
-                  </div>
-                  <div className="health-item">
-                    <span className="cakto-icon">C</span>
-                    <span>
-                      <strong>Cakto</strong>
-                      <small>Vendas e reembolsos</small>
-                    </span>
-                    <span className={`status-dot ${data.caktoConnected ? 'connected' : ''}`} />
-                    <small>{data.caktoConnected ? 'Configurado' : 'Não conectado'}</small>
-                  </div>
-                  <button className="panel-link" onClick={() => changeTab('integrations')}>
-                    Gerenciar integrações
-                    <ArrowRight size={14} />
-                  </button>
-                </section>
-              </div>
+                    <ConversionFunnel
+                      clicks={s.clicks}
+                      pageviews={s.pageviews}
+                      checkouts={s.checkouts}
+                      sales={s.sales}
+                    />
+                    <div className="panel-footnote">
+                      Cliques no link e visitas de destino: Meta Ads. Checkouts: pixel MetaTrack.
+                      Vendas: Cakto. Etapas agregadas, sem visitantes únicos.
+                    </div>
+                  </section>
+                </LayoutSection>
+                <LayoutSection id="connections">
+                  <section className="panel connection-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>Saúde das integrações</h2>
+                        <p>Os pontos de conexão da sua operação.</p>
+                      </div>
+                      <span className="connection-count">
+                        {Number(data.metaConnected) + Number(data.caktoConnected)}/2
+                      </span>
+                    </div>
+                    <div className="health-item">
+                      <span className="meta-icon">∞</span>
+                      <span>
+                        <strong>Meta Ads</strong>
+                        <small>Campanhas e investimento</small>
+                      </span>
+                      <span className={`status-dot ${data.metaConnected ? 'connected' : ''}`} />
+                      <small>{data.metaConnected ? 'Conectado' : 'Não conectado'}</small>
+                    </div>
+                    <div className="health-item">
+                      <span className="cakto-icon">C</span>
+                      <span>
+                        <strong>Cakto</strong>
+                        <small>Vendas e reembolsos</small>
+                      </span>
+                      <span className={`status-dot ${data.caktoConnected ? 'connected' : ''}`} />
+                      <small>{data.caktoConnected ? 'Configurado' : 'Não conectado'}</small>
+                    </div>
+                    <button className="panel-link" onClick={() => changeTab('integrations')}>
+                      Gerenciar integrações
+                      <ArrowRight size={14} />
+                    </button>
+                  </section>
+                </LayoutSection>
+              </OverviewLayout>
             </>
           )}
           {tab === 'campaigns' && (

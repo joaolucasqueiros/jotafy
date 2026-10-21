@@ -146,6 +146,7 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
   };
   return {
     financials,
+    workspaceId: w.id,
     demo: false,
     workspace: w.name,
     userName: w.user_name,

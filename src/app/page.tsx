@@ -12,6 +12,7 @@ export default async function Page() {
               ...demoData(),
               demo: false,
               workspace: w.name,
+              workspaceId: w.id,
               userName: w.user_name,
               metaConnected: false,
               caktoConnected: false,

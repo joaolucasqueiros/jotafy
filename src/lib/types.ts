@@ -43,6 +43,7 @@ export type Financials = {
   expenses: number;
 };
 export type DashboardData = {
+  workspaceId?: string;
   financials?: Financials;
   demo: boolean;
   workspace: string;

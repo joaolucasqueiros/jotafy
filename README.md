@@ -57,6 +57,7 @@ Não prefixe segredos com `NEXT_PUBLIC_`. Não versione `.env.local`. Não utili
 - Atribuição via `mt_click` ou UTMs de IDs. Anúncios e conjuntos são resolvidos no próprio workspace, sem confiar em IDs de outro cliente. Venda sem origem válida fica sem atribuição.
 - Outbox CAPI persistida na mesma transação do pedido, `event_id` estável, retries com backoff, até dez tentativas, erro visível e confirmação de `events_received`. Payloads antigos e sem matching válido não são declarados entregues.
 - Dashboard com períodos de até 90 dias, filtros campanha/conjunto/anúncio, receita, gasto, ROAS, CPA, lucro estimado, reembolsos, funil agregado e origem das vendas. Histórico e exportação CSV dos últimos 200 pedidos do filtro.
+- Personalização da visão geral: ordem e largura dos blocos, visibilidade, 2/3/4 cards por linha, espaçamento e tamanho dos valores. Preferências em localStorage por workspace e navegador, com restauração do padrão; não sincronizam entre dispositivos.
 - UI responsiva com Tailwind e componente Button no padrão shadcn/ui (Radix Slot + CVA). Os componentes estão no próprio repositório e podem ser adaptados.
 
 ## Estrutura

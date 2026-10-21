@@ -3238,3 +3238,197 @@ td small {
     font-size: 11px;
   }
 }
+
+/* User-controlled overview sections; DOM order follows the saved order. */
+.overview-layout {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 20px;
+}
+.layout-section {
+  min-width: 0;
+}
+.layout-section:empty {
+  display: none;
+}
+.layout-width-full {
+  grid-column: span 12;
+}
+.layout-width-wide {
+  grid-column: span 8;
+}
+.layout-width-half {
+  grid-column: span 6;
+}
+.layout-width-narrow {
+  grid-column: span 4;
+}
+.overview-layout .layout-section > .panel {
+  height: 100%;
+  margin: 0;
+}
+.overview-layout .secondary-metrics {
+  margin: 0;
+  height: 100%;
+}
+.overview-layout .metric-grid {
+  grid-template-columns: repeat(var(--layout-columns, 4), minmax(0, 1fr));
+}
+.layout-columns-2 {
+  --layout-columns: 2;
+}
+.layout-columns-3 {
+  --layout-columns: 3;
+}
+.layout-columns-4 {
+  --layout-columns: 4;
+}
+.overview-layout .layout-section {
+  container-type: inline-size;
+}
+@container (max-width: 700px) {
+  .overview-layout .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .overview-layout .bottom-grid {
+    grid-template-columns: 1fr;
+  }
+  .overview-layout .secondary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width: 360px) {
+  .overview-layout .metric-grid,
+  .overview-layout .secondary-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+.layout-density-compact {
+  gap: 12px;
+}
+.layout-density-compact .metric-card {
+  padding: 12px;
+}
+.layout-density-compact .metric-grid {
+  gap: 10px;
+}
+.layout-density-compact .panel-heading {
+  padding: 15px;
+}
+.layout-density-compact .metric-note {
+  margin-top: 10px;
+}
+.layout-text-large .metric-card > strong {
+  font-size: clamp(30px, 3vw, 42px);
+}
+.layout-settings-modal {
+  width: min(850px, calc(100vw - 32px));
+  max-width: 850px;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+.layout-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.layout-settings-heading h2 {
+  margin: 0 0 8px;
+}
+.layout-settings-heading p,
+.layout-settings-hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.layout-settings-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 24px 0 16px;
+}
+.layout-settings-modal select {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: #19212e;
+  border: 1px solid #344052;
+  border-radius: 7px;
+  padding: 10px;
+}
+.layout-settings-list {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0;
+  display: grid;
+  gap: 8px;
+}
+.layout-settings-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 165px auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #303a49;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.layout-visibility {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.layout-visibility input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.layout-move-buttons {
+  display: flex;
+  gap: 5px;
+}
+.layout-settings-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #303a49;
+  padding-top: 18px;
+  margin-top: 18px;
+}
+.layout-settings-footer > div {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 1000px) {
+  .overview-layout .layout-section {
+    grid-column: span 12;
+  }
+}
+@media (max-width: 700px) {
+  .overview-layout .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .layout-settings-options {
+    grid-template-columns: 1fr;
+  }
+  .layout-settings-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .layout-settings-list li > select {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .layout-move-buttons {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .layout-settings-footer {
+    flex-direction: column;
+  }
+  .heading-actions {
+    flex-wrap: wrap;
+  }
+}
