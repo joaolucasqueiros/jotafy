@@ -135,3 +135,4 @@ npm run worker
 O Dockerfile permite construir uma imagem da aplicação e iniciar o worker com o mesmo artefato e comando `npm run worker`. Migre uma vez antes de iniciar as réplicas. Nunca passe segredos como build args. A imagem exclui `.env*`; forneça-os no runtime pelo secret manager do seu provedor. Configure HTTPS no ingress, limites por IP no proxy confiável, logs com redação, métricas de jobs falhos, backups e restauração de PostgreSQL. Veja [docs/production.md](docs/production.md).
 
 Esta entrega é a base funcional da versão 1.0, não uma certificação de prontidão operacional. Ainda exige homologação dos provedores, revisão de segurança do deployment, configurações e políticas específicas do negócio. Não inclui cobrança de assinatura, recuperação de senha por e-mail, verificação de e-mail, equipes com múltiplos membros ou conectores Google/TikTok.
+<!-- Disparar nova build na Cloudflare -->
