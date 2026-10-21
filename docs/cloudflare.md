@@ -31,7 +31,7 @@ Em **Configurações → Variáveis e segredos**, configure no runtime do Worker
 
 Execute as migrações com `npm run db:migrate` em um ambiente Node seguro que tenha acesso ao mesmo PostgreSQL. Não execute migrações em cada requisição. O código fecha conexões PostgreSQL de Workers dentro da operação; não compartilha sockets entre requisições. Para escala, use um endpoint de pool do seu provedor ou adapte o binding Hyperdrive do seu ambiente; nenhum ID de Hyperdrive foi inventado no repositório.
 
-O processo contínuo `npm run worker` é destinado a Node, não a Cloudflare Workers. Para esta implantação, mantenha esse processo em um serviço Node ou configure um agendador externo autenticado para `/api/jobs`. Sem isso, CAPI e sincronizações ficam na fila. O painel de demonstração não precisa desses serviços.
+O processo contínuo `npm run worker` é destinado a Node, não a Cloudflare Workers. Para esta implantação, mantenha esse processo em um serviço Node ou configure um agendador externo autenticado para `/api/jobs`. Sem isso, CAPI e sincronizações periódicas com o navegador fechado ficam na fila. A sincronização manual pelo painel processa apenas o job do workspace autenticado no servidor, com deduplicação por minuto. O painel aberto relê os dados a cada 30 segundos e solicita sincronização quando os dados têm 15 minutos ou mais. Contas grandes devem manter o processamento dedicado para evitar o limite de duração das requisições. O painel de demonstração não precisa desses serviços.
 
 ## Validar antes de enviar
 

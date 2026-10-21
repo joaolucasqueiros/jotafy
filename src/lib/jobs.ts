@@ -11,7 +11,10 @@ export async function scheduleSyncs() {
       [c.workspace_id, `auto:${Math.floor(Date.now() / 900000)}`],
     );
 }
-export async function runJobs(limit = 10) {
+export async function runJobs(
+  limit = 10,
+  scope: { workspaceId: string; jobId: string } | null = null,
+) {
   let completed = 0,
     failed = 0;
   for (let i = 0; i < limit; i++) {
@@ -19,9 +22,19 @@ export async function runJobs(limit = 10) {
       const {
         rows: [j],
       } = await c.query(
-        "SELECT * FROM jobs WHERE ((status='pending' AND run_at<=now()) OR (status='running' AND locked_until<now())) ORDER BY run_at FOR UPDATE SKIP LOCKED LIMIT 1",
+        "SELECT * FROM jobs WHERE ((status='pending' AND run_at<=now()) OR (status='running' AND locked_until<now())) AND ($1::uuid IS NULL OR workspace_id=$1) AND ($2::uuid IS NULL OR id=$2) ORDER BY run_at FOR UPDATE SKIP LOCKED LIMIT 1",
+        [scope?.workspaceId || null, scope?.jobId || null],
       );
       if (!j) return null;
+      if (j.kind === 'meta_sync') {
+        // Different queue entries must not sync the same workspace concurrently.
+        await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,1))', [j.workspace_id]);
+        const { rowCount } = await c.query(
+          "SELECT id FROM jobs WHERE workspace_id=$1 AND kind='meta_sync' AND status='running' AND locked_until>now() AND id<>$2 LIMIT 1",
+          [j.workspace_id, j.id],
+        );
+        if (rowCount) return null;
+      }
       await c.query(
         "UPDATE jobs SET status='running',attempts=attempts+1,locked_until=now()+interval '20 minutes' WHERE id=$1",
         [j.id],

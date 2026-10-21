@@ -1,9 +1,12 @@
 'use client';
-import { Children, cloneElement, isValidElement, useEffect, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Check, RotateCcw, Settings2, X } from 'lucide-react';
+import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
+import GridLayout from 'react-grid-layout';
+import { Grip, Move, Save, ArrowDown, ArrowUp, Check, RotateCcw, Settings2, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Modal } from './ui/modal';
 import {
+  canvasLayout,
+  normalizeCanvas,
   defaultDashboardLayout,
   layoutSections,
   normalizeDashboardLayout,
@@ -15,6 +18,8 @@ import {
 export function useDashboardLayout(workspaceId: string) {
   const storageKey = `metatrack:dashboard-layout:v1:${workspaceId}`;
   const [preferences, setPreferences] = useState(defaultDashboardLayout);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(defaultDashboardLayout);
   const [ready, setReady] = useState(false);
   useEffect(() => {
     setReady(false);
@@ -26,6 +31,8 @@ export function useDashboardLayout(workspaceId: string) {
       /* A blocked or corrupt browser store must not prevent access to metrics. */
     }
     setPreferences(next);
+    setDraft(next);
+    setEditing(false);
     setReady(true);
   }, [storageKey]);
   function save(next: DashboardLayoutPreferences) {
@@ -37,9 +44,26 @@ export function useDashboardLayout(workspaceId: string) {
       persisted = false;
     }
     setPreferences(normalized);
+    setDraft(normalized);
+    setEditing(false);
     return persisted;
   }
-  return { preferences, ready, save };
+  return {
+    preferences: editing ? draft : preferences,
+    ready,
+    save,
+    editing,
+    begin: () => {
+      setDraft(structuredClone(preferences));
+      setEditing(true);
+    },
+    cancel: () => {
+      setDraft(preferences);
+      setEditing(false);
+    },
+    update: setDraft,
+    apply: () => save(draft),
+  };
 }
 
 export function LayoutSection({
@@ -52,31 +76,173 @@ export function LayoutSection({
   children: ReactNode;
 }) {
   return (
-    <div className={`layout-section layout-width-${width}`} data-layout-section={id}>
+    <div className={`layout-section layout-width-${width}`} data-layout-content={id}>
       {children}
     </div>
   );
 }
 export function OverviewLayout({
-  preferences,
+  controller,
   children,
 }: {
-  preferences: DashboardLayoutPreferences;
+  controller: ReturnType<typeof useDashboardLayout>;
   children: ReactNode;
 }) {
+  const { preferences, editing } = controller;
+  const container = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const node = container.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const elements = Children.toArray(children).filter(
-    isValidElement<{ id: SectionId; width?: SectionWidth }>,
+    isValidElement<{ id: SectionId; children: ReactNode }>,
   );
+  const widgets: { id: string; sectionId: SectionId; label: string; content: ReactNode }[] = [];
+  for (const section of preferences.sections.filter((s) => s.visible)) {
+    const element = elements.find((child) => child.props.id === section.id);
+    if (!element || !element.props.children) continue;
+    const label = layoutSections.find((s) => s.id === section.id)!.label;
+    if (
+      section.id === 'metrics' &&
+      isValidElement<{ children: ReactNode }>(element.props.children)
+    ) {
+      Children.toArray(element.props.children.props.children).forEach((content, index) => {
+        widgets.push({
+          id: `metric-${index}`,
+          sectionId: section.id,
+          label: ['Faturamento', 'Investimento', 'ROAS', 'Lucro'][index],
+          content,
+        });
+      });
+    } else if (
+      section.id === 'financials' &&
+      isValidElement<{ children: ReactNode }>(element.props.children)
+    ) {
+      const parts = Children.toArray(element.props.children.props.children).filter(
+        isValidElement<{ className?: string; children: ReactNode }>,
+      );
+      const cards = parts.find((part) => part.props.className === 'metric-grid');
+      if (cards) {
+        const heading = parts.find((part) => part.props.className === 'panel-heading');
+        widgets.push({
+          id: 'financial-intro',
+          sectionId: section.id,
+          label: 'Financeiro Cakto',
+          content: <section className="panel">{heading}</section>,
+        });
+        Children.toArray(cards.props.children).forEach((content, index) => {
+          const cardLabel = isValidElement(content)
+            ? String(content.key || 'Financeiro').replace(/^\.\$/, '')
+            : 'Financeiro';
+          widgets.push({
+            id: `financial-${index}`,
+            sectionId: section.id,
+            label: cardLabel,
+            content,
+          });
+        });
+        widgets.push({
+          id: 'financial-details',
+          sectionId: section.id,
+          label: 'Produtos e pagamentos',
+          content: (
+            <section className="panel">
+              {parts.filter((part) => part !== heading && part !== cards)}
+            </section>
+          ),
+        });
+      } else widgets.push({ id: section.id, sectionId: section.id, label, content: element });
+    } else widgets.push({ id: section.id, sectionId: section.id, label, content: element });
+  }
+  const desktop = width > 900;
+  const layout = canvasLayout(
+    preferences,
+    widgets.map((widget) => widget.id),
+  );
+  function changed(next: GridLayout.Layout[]) {
+    controller.update((current) => ({
+      ...current,
+      canvas: normalizeCanvas([
+        ...(current.canvas || []).filter((item) => !next.some((n) => n.i === item.i)),
+        ...next,
+      ]),
+    }));
+  }
   return (
     <div
-      className={`overview-layout layout-density-${preferences.density} layout-columns-${preferences.columns} layout-text-${preferences.textSize}`}
+      ref={container}
+      className={`overview-layout canvas-dashboard layout-density-${preferences.density} layout-columns-${preferences.columns} layout-text-${preferences.textSize} ${editing ? 'canvas-editing' : ''}`}
     >
-      {preferences.sections
-        .filter((section) => section.visible)
-        .map((section) => {
-          const element = elements.find((child) => child.props.id === section.id);
-          return element ? cloneElement(element, { key: section.id, width: section.width }) : null;
-        })}
+      {width > 0 && desktop ? (
+        <GridLayout
+          width={width}
+          cols={12}
+          rowHeight={24}
+          margin={[16, 16]}
+          containerPadding={[0, 0]}
+          layout={layout.map((item) => ({ ...item, minW: 2, minH: 3, maxH: 80 }))}
+          isDraggable={editing}
+          isResizable={editing}
+          draggableHandle=".canvas-drag-handle"
+          resizeHandles={['se', 'e', 's']}
+          onDragStop={changed}
+          onResizeStop={changed}
+          compactType="vertical"
+          className="canvas-grid"
+        >
+          {widgets.map((widget) => (
+            <div
+              key={widget.id}
+              className="canvas-widget"
+              data-canvas-id={widget.id}
+              data-layout-section={widget.sectionId}
+            >
+              {editing && (
+                <div
+                  className="canvas-drag-handle"
+                  aria-label={`Arrastar ${widget.label}`}
+                  title="Arraste para mover"
+                >
+                  <Grip size={16} />
+                  <span>{widget.label}</span>
+                  <Move size={14} />
+                </div>
+              )}
+              <div className="canvas-widget-content">{widget.content}</div>
+            </div>
+          ))}
+        </GridLayout>
+      ) : (
+        <div className="canvas-mobile-stack">
+          {editing && (
+            <p className="layout-settings-hint">
+              Abra no computador para arrastar e redimensionar. As opções de exibição também
+              funcionam no celular.
+            </p>
+          )}
+          {widgets
+            .slice()
+            .sort((a, b) => {
+              const aa = layout.find((item) => item.i === a.id)!;
+              const bb = layout.find((item) => item.i === b.id)!;
+              return aa.y - bb.y || aa.x - bb.x;
+            })
+            .map((widget) => (
+              <div
+                key={widget.id}
+                className="canvas-mobile-widget"
+                data-canvas-id={widget.id}
+                data-layout-section={widget.sectionId}
+              >
+                {widget.content}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -96,11 +262,64 @@ export function DashboardLayoutSettings({
       const target = index + offset;
       if (target < 0 || target >= sections.length) return current;
       [sections[index], sections[target]] = [sections[target], sections[index]];
-      return { ...current, sections };
+      return { ...current, sections, canvas: undefined };
     });
   }
   return (
     <>
+      {!controller.editing ? (
+        <Button variant="outline" disabled={!controller.ready} onClick={controller.begin}>
+          <Move size={16} />
+          Editar layout visual
+        </Button>
+      ) : (
+        <>
+          <Button
+            onClick={() => {
+              const saved = controller.apply();
+              notify(
+                saved
+                  ? 'Layout visual salvo neste navegador.'
+                  : 'Layout aplicado; salvamento bloqueado pelo navegador.',
+              );
+            }}
+          >
+            <Save size={16} />
+            Salvar layout visual
+          </Button>
+          <Button variant="outline" onClick={controller.cancel}>
+            Cancelar edição
+          </Button>
+          <Button variant="ghost" onClick={() => controller.update(defaultDashboardLayout())}>
+            <RotateCcw size={16} />
+            Restaurar padrão
+          </Button>
+        </>
+      )}
+      {controller.editing && (
+        <div className="canvas-editor-toolbar" role="region" aria-label="Edição visual do painel">
+          <span>
+            <Move size={17} />
+            Arraste pela barra verde. Redimensione pelos cantos e bordas.
+          </span>
+          <Button variant="outline" onClick={controller.cancel}>
+            Descartar alterações
+          </Button>
+          <Button
+            onClick={() => {
+              const saved = controller.apply();
+              notify(
+                saved
+                  ? 'Layout visual salvo neste navegador.'
+                  : 'Layout aplicado apenas nesta sessão.',
+              );
+            }}
+          >
+            <Save size={16} />
+            Concluir edição
+          </Button>
+        </div>
+      )}
       <Button
         variant="outline"
         disabled={!controller.ready}
@@ -110,7 +329,7 @@ export function DashboardLayoutSettings({
         }}
       >
         <Settings2 size={16} />
-        Personalizar painel
+        Opções de exibição
       </Button>
       {open && (
         <Modal
@@ -121,7 +340,10 @@ export function DashboardLayoutSettings({
           <div className="layout-settings-heading">
             <div>
               <h2>Personalizar painel</h2>
-              <p>Ajuste o tamanho, a ordem e os blocos da visão geral.</p>
+              <p>
+                Ajuste a aparência e a visibilidade. Para mover e redimensionar, use Editar layout
+                visual.
+              </p>
             </div>
             <Button
               variant="ghost"
@@ -155,7 +377,11 @@ export function DashboardLayoutSettings({
                 aria-label="Cards por linha no computador"
                 value={draft.columns}
                 onChange={(e) =>
-                  setDraft({ ...draft, columns: Number(e.target.value) as 2 | 3 | 4 })
+                  setDraft({
+                    ...draft,
+                    canvas: undefined,
+                    columns: Number(e.target.value) as 2 | 3 | 4,
+                  })
                 }
               >
                 <option value="2">2 · grandes</option>
@@ -207,6 +433,7 @@ export function DashboardLayoutSettings({
                     onChange={(e) =>
                       setDraft({
                         ...draft,
+                        canvas: undefined,
                         sections: draft.sections.map((s) =>
                           s.id === section.id ? { ...s, width: e.target.value as SectionWidth } : s,
                         ),

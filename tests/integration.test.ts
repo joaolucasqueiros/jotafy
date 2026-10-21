@@ -205,6 +205,103 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
       await query('DELETE FROM jobs WHERE workspace_id=$1', [fw.id]);
     },
   );
+  await t.test(
+    'scoped Meta job refreshes link clicks and landing views without processing other workspaces',
+    async () => {
+      const sw = await workspace(),
+        foreign = await workspace();
+      await query(
+        "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_123','Account','BRL','America/Sao_Paulo',true)",
+        [sw.id],
+      );
+      await query(
+        "INSERT INTO meta_connections(workspace_id,meta_user_id,token,expires_at) VALUES($1,'meta-user',$2,now()+interval '1 day')",
+        [sw.id, encrypt('sync-test-token')],
+      );
+      const [foreignJob] = await query(
+        "INSERT INTO jobs(workspace_id,kind,dedupe_key) VALUES($1,'capi','foreign') RETURNING id",
+        [foreign.id],
+      );
+      let linkClicks = 11,
+        visits = 8;
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      const fetchMock = mock.method(globalThis, 'fetch', async (input: URL | Request | string) => {
+        const url = new URL(String(input));
+        assert.equal(url.hostname, 'graph.facebook.com');
+        if (url.pathname.endsWith('/campaigns'))
+          return Response.json({ data: [{ id: '997', name: 'Campaign', status: 'ACTIVE' }] });
+        if (url.pathname.endsWith('/adsets'))
+          return Response.json({
+            data: [{ id: '998', campaign_id: '997', name: 'Adset', status: 'ACTIVE' }],
+          });
+        if (url.pathname.endsWith('/ads'))
+          return Response.json({
+            data: [
+              { id: '999', campaign_id: '997', adset_id: '998', name: 'Ad', status: 'ACTIVE' },
+            ],
+          });
+        assert(url.pathname.endsWith('/insights'));
+        assert(url.searchParams.get('fields')!.includes('inline_link_clicks'));
+        assert(url.searchParams.get('fields')!.includes('actions'));
+        assert.equal(JSON.parse(url.searchParams.get('time_range')!).until, day);
+        return Response.json({
+          data: [
+            {
+              ad_id: '999',
+              adset_id: '998',
+              campaign_id: '997',
+              date_start: day,
+              spend: '12.34',
+              inline_link_clicks: String(linkClicks),
+              impressions: '100',
+              actions: [{ action_type: 'landing_page_view', value: String(visits) }],
+            },
+          ],
+        });
+      });
+      try {
+        for (let i = 0; i < 2; i++) {
+          const [job] = await query(
+            "INSERT INTO jobs(workspace_id,kind,dedupe_key) VALUES($1,'meta_sync',$2) RETURNING id",
+            [sw.id, `scoped-${i}`],
+          );
+          assert.deepEqual(await runJobs(1, { workspaceId: sw.id, jobId: foreignJob.id }), {
+            completed: 0,
+            failed: 0,
+          });
+          assert.deepEqual(await runJobs(1, { workspaceId: sw.id, jobId: job.id }), {
+            completed: 1,
+            failed: 0,
+          });
+          const result = await dashboard(
+            { ...sw, user_name: 'Sync', email: 'sync@example.com' },
+            { start: day, end: day },
+          );
+          assert.equal(result.summary.clicks, linkClicks);
+          assert.equal(result.summary.pageviews, visits);
+          assert.equal(result.summary.spend, 1234);
+          assert(result.lastSync);
+          linkClicks = 14;
+          visits = 10;
+        }
+        assert.equal(
+          (await query('SELECT status FROM jobs WHERE id=$1', [foreignJob.id]))[0].status,
+          'pending',
+        );
+        assert.equal(
+          (
+            await query('SELECT count(*)::int AS count FROM ad_insights WHERE workspace_id=$1', [
+              sw.id,
+            ])
+          )[0].count,
+          1,
+        );
+      } finally {
+        fetchMock.mock.restore();
+        await query('DELETE FROM jobs WHERE workspace_id=$1', [foreign.id]);
+      }
+    },
+  );
   await t.test('unconfigured CAPI is retried and never marked delivered', async () => {
     await runJobs(5);
     const jobs = await query('SELECT status,attempts,last_error FROM jobs WHERE workspace_id=$1', [

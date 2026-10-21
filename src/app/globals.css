@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@import 'react-grid-layout/css/styles.css';
+@import 'react-resizable/css/styles.css';
 @theme inline {
   --color-background: #10151f;
   --color-foreground: #edf0f6;
@@ -3430,5 +3432,184 @@ td small {
   }
   .heading-actions {
     flex-wrap: wrap;
+  }
+}
+
+/* Canvas editing: the grip moves widgets, resize handles change both dimensions. */
+.overview-layout.canvas-dashboard {
+  display: block;
+}
+.canvas-dashboard .canvas-widget {
+  border-radius: 10px;
+  min-width: 0;
+}
+.canvas-widget-content {
+  height: 100%;
+  overflow: auto;
+  border-radius: 9px;
+  scrollbar-width: thin;
+}
+.canvas-widget-content > .metric-card {
+  height: 100%;
+}
+.canvas-widget-content > .layout-section {
+  height: 100%;
+}
+.canvas-dashboard .canvas-widget-content .layout-section > .panel {
+  height: auto;
+  min-height: 100%;
+}
+.canvas-dashboard .canvas-widget-content .secondary-metrics {
+  height: auto;
+  min-height: 100%;
+}
+.canvas-dashboard .canvas-widget-content .metric-grid {
+  grid-template-columns: repeat(var(--layout-columns, 4), minmax(0, 1fr));
+}
+.canvas-editing {
+  border: 1px dashed #465c66;
+  border-radius: 12px;
+  padding: 12px;
+  background-image: radial-gradient(#79e0b726 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.canvas-editing .canvas-widget {
+  outline: 1px dashed #79e0b7aa;
+  background: #151d29;
+}
+.canvas-editing .canvas-widget-content {
+  height: calc(100% - 32px);
+}
+.canvas-drag-handle {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 9px 9px 0 0;
+  background: #284137;
+  color: #b1f7da;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  font-size: 11px;
+}
+.canvas-drag-handle span {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.canvas-drag-handle:active {
+  cursor: grabbing;
+}
+.canvas-dashboard .react-grid-item.react-grid-placeholder {
+  background: #79e0b7;
+  opacity: 0.18;
+  border-radius: 9px;
+}
+.canvas-dashboard .react-resizable-handle {
+  z-index: 5;
+}
+.canvas-editing .react-resizable-handle-se {
+  width: 24px;
+  height: 24px;
+  background: #284137;
+  border-radius: 8px 0 9px 0;
+}
+.canvas-editing .react-resizable-handle::after {
+  border-color: #79e0b7;
+}
+.canvas-mobile-stack {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.canvas-mobile-widget {
+  grid-column: span 2;
+  min-width: 0;
+}
+.canvas-mobile-widget[data-layout-section='metrics'] {
+  grid-column: span 1;
+}
+.canvas-dashboard .canvas-mobile-widget > .metric-card {
+  height: 100%;
+}
+.canvas-dashboard .canvas-mobile-widget > .layout-section > .panel {
+  height: auto;
+}
+.sync-error-notice {
+  color: #f6bb95;
+  border: 1px solid #73513d;
+  background: #30231f;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 700px) {
+  .canvas-dashboard .canvas-widget-content .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .heading-actions {
+    max-width: 100%;
+    gap: 8px;
+  }
+}
+
+.canvas-editor-toolbar {
+  position: fixed;
+  bottom: 20px;
+  right: 24px;
+  left: 304px;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1px solid #79e0b7;
+  border-radius: 12px;
+  background: #182b25f5;
+  box-shadow: 0 10px 45px #0008;
+}
+.canvas-editor-toolbar > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  font-size: 12px;
+  color: #b1f7da;
+}
+@media (max-width: 1000px) {
+  .canvas-editor-toolbar {
+    left: 20px;
+  }
+}
+@media (max-width: 700px) {
+  .canvas-editor-toolbar {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .canvas-editor-toolbar > span {
+    flex-basis: 100%;
+  }
+}
+.canvas-widget .metric-card > strong,
+.canvas-mobile-widget .metric-card > strong {
+  color: var(--text);
+}
+[data-canvas-id='metric-3'] .metric-card > strong {
+  color: var(--accent);
+}
+.canvas-widget .metric-card.red > strong,
+.canvas-mobile-widget .metric-card.red > strong {
+  color: #f68888;
+}
+@media (max-width: 700px) {
+  .canvas-dashboard.layout-text-large .canvas-mobile-widget .metric-card > strong {
+    font-size: clamp(20px, 5.2vw, 28px);
   }
 }

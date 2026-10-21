@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canvasLayout,
+  normalizeCanvas,
   defaultDashboardLayout,
   layoutSections,
   normalizeDashboardLayout,
@@ -45,4 +47,19 @@ test('layout cannot permanently hide every section and defaults are independent'
   assert(result.sections.some((s) => s.visible));
   defaults.sections[0].visible = false;
   assert.equal(defaultDashboardLayout().sections[0].visible, true);
+});
+
+test('canvas clamps malicious or invalid geometry and retains valid saved positions', () => {
+  assert.deepEqual(
+    normalizeCanvas([
+      { i: 'metric-0', x: 99, y: -1, w: 99, h: 0 },
+      { i: 'unknown', x: 0, y: 0, w: 3, h: 4 },
+    ]),
+    [{ i: 'metric-0', x: 0, y: 0, w: 12, h: 3 }],
+  );
+  const preferences = {
+    ...defaultDashboardLayout(),
+    canvas: [{ i: 'funnel', x: 4, y: 2, w: 8, h: 10 }],
+  };
+  assert.deepEqual(canvasLayout(preferences, ['metric-0', 'funnel'])[1], preferences.canvas[0]);
 });

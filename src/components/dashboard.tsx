@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -211,6 +211,9 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     [entityLevel, setEntityLevel] = useState<'campaign' | 'adset' | 'ad'>('campaign'),
     [entities, setEntities] = useState<Campaign[]>([]);
   const demo = initial.demo;
+  const refreshing = useRef(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
   function notify(message: string) {
     setToast(message);
   }
@@ -230,14 +233,28 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     setMobile(false);
     history.replaceState(null, '', `?tab=${t}`);
   }
-  async function refresh() {
+  async function refresh(sync = false, quiet = false) {
+    if (refreshing.current) return;
     if (demo) {
       setData(demoData(Number(period) || 7, campaign));
       notify('Dados de demonstração atualizados.');
       return;
     }
+    refreshing.current = true;
     setBusy(true);
     try {
+      if (sync && data.metaConnected) {
+        setSyncing(true);
+        setSyncError('');
+        try {
+          const result = await api('/api/meta/sync', {});
+          if (!quiet) notify(result.message);
+        } catch (error) {
+          const message = (error as Error).message;
+          setSyncError(message);
+          if (!quiet) notify(message);
+        }
+      }
       setData(
         await api(
           `/api/dashboard?${new URLSearchParams({ ...range, ...(campaign ? { campaign } : {}), ...(adset ? { adset } : {}), ...(ad ? { ad } : {}) })}`,
@@ -246,6 +263,8 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     } catch (e) {
       notify((e as Error).message);
     } finally {
+      refreshing.current = false;
+      setSyncing(false);
       setBusy(false);
     }
   }
@@ -272,6 +291,33 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
       cancelled = true;
     };
   }, [demo, period, range.start, range.end, campaign, adset, ad]);
+  useEffect(() => {
+    if (demo || !['overview', 'campaigns', 'sales'].includes(tab)) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (period !== 'custom') {
+        const currentRange = dateRange(Number(period) || 7);
+        if (currentRange.start !== range.start || currentRange.end !== range.end) {
+          setRange(currentRange);
+          return;
+        }
+      }
+      const stale = !data.lastSync || Date.now() - Date.parse(data.lastSync) >= 15 * 60000;
+      void refresh(stale && data.metaConnected, true);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [
+    demo,
+    tab,
+    period,
+    data.lastSync,
+    data.metaConnected,
+    range.start,
+    range.end,
+    campaign,
+    adset,
+    ad,
+  ]);
   async function loadIntegration() {
     if (demo) return;
     try {
@@ -580,6 +626,12 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               </p>
             </div>
             <div className="heading-actions">
+              {syncError && (
+                <div className="sync-error-notice" role="status">
+                  Não foi possível atualizar a Meta: {syncError}. Os valores exibidos são da última
+                  sincronização concluída.
+                </div>
+              )}
               {tab === 'overview' && (
                 <DashboardLayoutSettings controller={layout} notify={notify} />
               )}
@@ -671,9 +723,14 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   Mais filtros{(adset || ad) && <i className="online-dot" />}
                 </button>
               </div>
-              <Button variant="outline" size="sm" disabled={busy} onClick={refresh}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void refresh(true)}
+              >
                 <RefreshCw size={14} className={busy ? 'spin' : ''} />
-                Atualizar
+                {syncing ? 'Sincronizando Meta…' : 'Atualizar'}
               </Button>
             </div>
           )}
@@ -764,7 +821,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                       : 'Aguardando primeira sincronização'}
                 </small>
               </div>
-              <OverviewLayout preferences={layout.preferences}>
+              <OverviewLayout controller={layout}>
                 <LayoutSection id="metrics">
                   <div className="metric-grid">
                     {metrics.map((m) => (
@@ -1155,12 +1212,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                     disabled={busy}
                     onClick={async () => {
                       if (demo) return notify('Conecte a Meta para sincronizar campanhas reais.');
-                      try {
-                        const r = await api('/api/meta/sync', {});
-                        notify(r.message);
-                      } catch (e) {
-                        notify((e as Error).message);
-                      }
+                      await refresh(true);
                     }}
                   >
                     <RefreshCw size={14} />

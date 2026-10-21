@@ -116,7 +116,6 @@ Eventos de navegação usam UUID do pixel. O evento Purchase enviado manualmente
 7. Use Test Events no Events Manager e confira `events_received=1`, identificadores, `event_id`, qualidade de matching e ausência de duplicação por outra integração.
 8. Retire `test_event_code`, confira as permissões externas do aplicativo e monitore primeiras entregas de produção.
 
-
 ### Visitas de destino no funil
 
 Os cliques usam `inline_link_clicks`; as visitas usam `actions` com tipo exato
@@ -163,3 +162,23 @@ valide também uma entrega real antes de confiar na conciliação financeira.
 
 Atualização: pare o worker, aplique `npm run db:migrate` antes da publicação,
 publique e reinicie o worker. Configure o e-mail, o segredo e o webhook na Cakto.
+
+### Atualização dos números e editor visual
+
+Atualizar e Sincronizar Meta consultam a Meta no servidor através de um job limitado
+ao workspace autenticado; não executam CAPI nem jobs de outros workspaces. A fila
+coordena a execução com o worker e evita duas sincronizações simultâneas do mesmo
+workspace. Pedidos manuais no mesmo minuto reutilizam o job. Erros do provedor são
+mostrados no painel. A tela visível consulta o banco a cada 30 segundos; se a última
+sincronização tem pelo menos 15 minutos, também solicita uma atualização à Meta.
+O período relativo muda automaticamente na virada do dia de São Paulo. Os números
+ainda dependem do atraso de processamento e das permissões da própria Meta.
+
+Em **Editar layout visual**, arraste a barra verde de cada card, gráfico ou bloco.
+Cantos e bordas alteram largura e altura; a grade ajusta os elementos para evitar
+sobreposição. Os quatro indicadores principais e os onze cards financeiros são
+elementos individuais. Use Concluir edição para salvar ou Descartar alterações
+para voltar ao layout anterior. As dimensões e posições ficam em localStorage por
+workspace/navegador, sem alterar os dados. No celular a ordem é preservada em uma
+lista responsiva; arraste e redimensionamento estão disponíveis no computador.
+Opções de exibição preserva controles de teclado para ordem e largura dos grupos.
