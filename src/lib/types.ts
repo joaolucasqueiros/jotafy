@@ -1,0 +1,60 @@
+export type Campaign = {
+  id: string;
+  name: string;
+  status: string;
+  dailyBudget: number | null;
+  spend: number;
+  revenue: number;
+  sales: number;
+  clicks: number;
+  impressions: number;
+  adsets: number;
+  accountId: string;
+};
+export type Sale = {
+  id: string;
+  externalId: string;
+  product: string;
+  status: string;
+  amount: number;
+  campaignId: string | null;
+  campaign: string;
+  ad: string;
+  attribution: string;
+  paymentMethod: string;
+  date: string;
+};
+export type DashboardData = {
+  demo: boolean;
+  workspace: string;
+  userName: string;
+  lastSync: string | null;
+  metaConnected: boolean;
+  caktoConnected: boolean;
+  summary: {
+    revenue: number;
+    spend: number;
+    profit: number;
+    costs: number;
+    roas: number;
+    cpa: number;
+    sales: number;
+    refundRate: number;
+    refunded: number;
+    pending: number;
+    chargebacks: number;
+    unattributed: number;
+    attributed: number;
+    clicks: number;
+    pageviews: number;
+    checkouts: number;
+  };
+  series: { date: string; label: string; revenue: number; spend: number }[];
+  campaigns: Campaign[];
+  sales: Sale[];
+  filters: {
+    campaigns: { id: string; name: string }[];
+    adsets: { id: string; name: string; campaignId: string }[];
+    ads: { id: string; name: string; adsetId: string }[];
+  };
+};
