@@ -60,3 +60,7 @@ Antes de abrir cadastro público, conclua a homologação dos provedores, o flux
 Siga [o passo a passo do Render](render-worker.md). O `render.yaml` na raiz cria
 apenas um Background Worker Node, sem trocar o site Cloudflare nem provisionar
 outro PostgreSQL. Revise o plano pago apresentado pelo provedor antes de criar.
+
+## Processador agendado gratuito
+
+Como alternativa ao processo contínuo, use [GitHub Actions](github-actions-worker.md) com `npm run worker:once`. O runner padrão é gratuito para repositórios públicos; a frequência aproximada é de 15 minutos e pode sofrer atrasos.

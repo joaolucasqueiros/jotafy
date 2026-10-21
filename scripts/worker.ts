@@ -17,6 +17,7 @@ try {
 }
 const { runJobs, scheduleSyncs, cleanup } = await import('../src/lib/jobs');
 const { db } = await import('../src/lib/db');
+const once = process.argv.includes('--once');
 let running = true;
 let lastCleanup = 0,
   lastHeartbeat = 0;
@@ -31,7 +32,8 @@ while (running) {
   try {
     await scheduleSyncs();
     const result = await runJobs(10);
-    if (result.completed || result.failed) console.log(result);
+    if (once || result.completed || result.failed) console.log(result);
+    if (once && result.failed) process.exitCode = 1;
     if (Date.now() - lastCleanup >= 3600000) {
       await cleanup();
       lastCleanup = Date.now();
@@ -42,7 +44,9 @@ while (running) {
     }
   } catch (error) {
     console.error('worker_cycle_failed', error instanceof Error ? error.name : 'Unknown');
+    if (once) process.exitCode = 1;
   }
+  if (once || !running) break;
   await new Promise((resolve) => setTimeout(resolve, 5000));
 }
 await db.end();

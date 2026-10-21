@@ -122,7 +122,9 @@ A suíte de banco não deve ser executada apontando para o banco de produção. 
 
 ## Implantação
 
-**Worker contínuo no Render:** o [render.yaml](render.yaml) cria apenas o processador Node. Siga [docs/render-worker.md](docs/render-worker.md) para conectar o repositório, revisar o plano pago e cadastrar os mesmos três segredos usados pela aplicação. O site permanece na Cloudflare.
+**Processador gratuito no GitHub Actions:** siga [docs/github-actions-worker.md](docs/github-actions-worker.md) para cadastrar os três segredos e executar a fila aproximadamente a cada 15 minutos, sem computador ligado. Gratuito com runner padrão em repositório público; o agendamento pode atrasar.
+
+**Worker contínuo no Render (pago):** o [render.yaml](render.yaml) cria apenas o processador Node. Siga [docs/render-worker.md](docs/render-worker.md) para conectar o repositório, revisar o plano pago e cadastrar os mesmos três segredos usados pela aplicação. O site permanece na Cloudflare.
 
 **Cloudflare Workers:** siga [docs/cloudflare.md](docs/cloudflare.md). Use o build OpenNext e Wrangler; `npm start` abaixo é apenas para servidores Node/Docker.
 

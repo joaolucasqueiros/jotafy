@@ -1,0 +1,34 @@
+name: MetaTrack - Processador
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metatrack-worker
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Processar fila
+        run: npm run worker:once
+        env:
+          NODE_ENV: production
+          META_GRAPH_VERSION: v25.0
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
