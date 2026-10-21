@@ -38,7 +38,8 @@ export async function GET(request: Request) {
       redirect_uri: config.callbackUrl,
       state,
       response_type: 'code',
-      scope: connect ? 'public_profile,email,ads_read,ads_management' : 'public_profile,email',
+      // Connecting ads to an existing workspace does not require the email permission.
+      scope: connect ? 'ads_read,ads_management' : 'public_profile,email',
     }).toString();
     return NextResponse.redirect(url);
   } catch (e) {

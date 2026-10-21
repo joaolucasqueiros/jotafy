@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     const profile = await graphRequest<{ id: string; name: string; email?: string }>(
       'me',
       long.access_token,
-      { fields: 'id,name,email' },
+      { fields: state.workspaceId ? 'id,name' : 'id,name,email' },
     );
     if (state.workspaceId) {
       const w = await currentWorkspace();
