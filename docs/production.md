@@ -20,7 +20,7 @@ A CSP atual permite inline styles/scripts para bootstrap do Next.js e restringe 
 
 ## Fila e falhas
 
-Jobs são obtidos com `FOR UPDATE SKIP LOCKED` e lease de 20 minutos. Backoff exponencial começa após a primeira falha e tem teto de 6 horas. Após dez tentativas, o job fica `failed`. Observe filas pending/running/failed, idade do job, erros de token/permissão, limite Meta, disponibilidade do banco e hora da última sincronização.
+Jobs são obtidos com `FOR UPDATE SKIP LOCKED`, coordenação por workspace e bloqueio de dois minutos renovado durante a execução. Tentativas antigas não podem sobrescrever as atuais. Backoff exponencial começa após a primeira falha e tem teto de 6 horas. Após dez tentativas, o job fica `failed`. Observe filas pending/running/failed, idade do job, erros de token/permissão, limite Meta, disponibilidade do banco e hora da última sincronização.
 
 Payload sem identificador de matching ou sem configuração de CAPI não é marcado entregue. Reconfigure os segredos, confirme a causa e reagende somente os jobs do workspace afetado. Não altere o evento para fazer a validação passar. Os limites de idade de eventos da Meta continuam aplicáveis; um evento velho pode exigir reconciliação operacional em vez de reenvio.
 
@@ -37,7 +37,7 @@ UPDATE jobs SET status='pending', attempts=0, run_at=now(), locked_until=NULL
 WHERE id=$1 AND workspace_id=$2 AND status='failed';
 ```
 
-Sincronizações manuais e automáticas podem se sobrepor; as operações de importação são upserts idempotentes. Em operações de grande volume, serialize por conta e adote a API assíncrona de Insights. O limite de paginação falha explicitamente e não apresenta uma importação parcial como concluída.
+Solicitações manuais reutilizam trabalhos pendentes; execuções por workspace são serializadas e as operações de importação são upserts idempotentes. Em operações de grande volume, serialize por conta e adote a API assíncrona de Insights. O limite de paginação falha explicitamente e não apresenta uma importação parcial como concluída.
 
 ## Privacidade, exclusão e chaves
 
@@ -54,3 +54,9 @@ Sincronizações manuais e automáticas podem se sobrepor; as operações de imp
 A versão 1 oferece um usuário por workspace. Não inclui convites/equipes, billing SaaS, SSO corporativo, recuperação de senha, verificação de e-mail ou portal de exclusão. O lucro estimado usa taxas médias e não substitui lucro líquido contábil conciliado. Não há importação histórica Cakto anterior à ativação do webhook, reconciliação com API de pedidos, normalização multimoeda ou integração Google/TikTok. Campanhas anteriores à primeira sincronização podem gerar vendas sem atribuição; sincronize antes do tráfego e valide os webhooks reais.
 
 Antes de abrir cadastro público, conclua a homologação dos provedores, o fluxo de recuperação/verificação de e-mail conforme sua operação, revisão de isolamento/autorização, monitoramento, revisão LGPD e exercício de restauração. Os testes locais não certificam permissões Meta nem contratos externos.
+
+## Worker contínuo no Render
+
+Siga [o passo a passo do Render](render-worker.md). O `render.yaml` na raiz cria
+apenas um Background Worker Node, sem trocar o site Cloudflare nem provisionar
+outro PostgreSQL. Revise o plano pago apresentado pelo provedor antes de criar.

@@ -1,0 +1,24 @@
+# Background Worker only. The dashboard and Cakto webhook stay on Cloudflare.
+# Review the paid worker plan in Render before creating the service.
+services:
+  - type: worker
+    name: metatrack-worker
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci --omit=dev --no-audit --no-fund
+    startCommand: npm run worker
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '24'
+      - key: META_GRAPH_VERSION
+        value: v25.0
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
