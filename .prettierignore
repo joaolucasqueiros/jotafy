@@ -4,3 +4,5 @@ package-lock.json
 next-env.d.ts
 db/*.sql
 public/pixel.js
+.open-next
+.wrangler

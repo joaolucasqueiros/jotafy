@@ -121,6 +121,8 @@ A suíte de banco não deve ser executada apontando para o banco de produção. 
 
 ## Implantação
 
+**Cloudflare Workers:** siga [docs/cloudflare.md](docs/cloudflare.md). Use o build OpenNext e Wrangler; `npm start` abaixo é apenas para servidores Node/Docker.
+
 ```bash
 npm ci
 npm run db:migrate

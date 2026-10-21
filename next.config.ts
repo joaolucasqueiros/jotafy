@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  // Next's Node trace omits pg's Workers-only branch; OpenNext still needs its socket adapter.
+  outputFileTracingIncludes: { '/*': ['./node_modules/pg-cloudflare/dist/**/*'] },
   devIndicators: false,
   poweredByHeader: false,
   async headers() {

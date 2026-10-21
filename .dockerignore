@@ -7,3 +7,6 @@ test-results
 playwright-report
 .local
 *.tsbuildinfo
+.open-next
+.wrangler
+.dev.vars*
