@@ -47,12 +47,16 @@ const schema = z.object({
   allowedOrigins: z
     .array(
       z.url().refine((u) => {
-        const x = new URL(u);
-        return (
-          x.origin === u &&
-          (x.protocol === 'https:' ||
-            (x.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(x.hostname)))
-        );
+        try {
+          const x = new URL(u);
+          return (
+            x.origin === u &&
+            (x.protocol === 'https:' ||
+              (x.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(x.hostname)))
+          );
+        } catch {
+          return false;
+        }
       }, 'Use uma origem HTTPS sem caminho.'),
     )
     .max(20)
