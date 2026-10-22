@@ -65,6 +65,7 @@ import { Button } from './ui/button';
 import { RevenueChart, AttributionChart } from './charts';
 import { demoData } from '@/lib/demo';
 import { money, number, percent, dateRange } from '@/lib/format';
+import { restoreDashboardFilters, validAnalysisRange } from '@/lib/dashboard-filters';
 import type { Campaign, DashboardData, Sale } from '@/lib/types';
 import type { IntegrationDiagnostics } from '@/lib/integration-diagnostics';
 type Tab = 'overview' | 'campaigns' | 'sales' | 'tracking' | 'integrations' | 'utms' | 'settings';
@@ -216,6 +217,33 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     [entityLevel, setEntityLevel] = useState<'campaign' | 'adset' | 'ad'>('campaign'),
     [entities, setEntities] = useState<Campaign[]>([]);
   const demo = initial.demo;
+  const filterStorageKey = `metatrack:dashboard-filters:v1:${initial.workspaceId || 'demo'}`;
+  const [loadedFilterKey, setLoadedFilterKey] = useState<string | null>(null);
+  const filtersReady = loadedFilterKey === filterStorageKey;
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(filterStorageKey);
+    } catch {
+      // Browser storage can be blocked; filtering must still work.
+    }
+    const saved = restoreDashboardFilters(raw, demo);
+    setPeriod(saved.period);
+    setRange(saved.range);
+    setCampaign(saved.campaign);
+    setAdset('');
+    setAd('');
+    setAdvanced(saved.period === 'custom');
+    setLoadedFilterKey(filterStorageKey);
+  }, [filterStorageKey, demo]);
+  useEffect(() => {
+    if (!filtersReady || !validAnalysisRange(range)) return;
+    try {
+      localStorage.setItem(filterStorageKey, JSON.stringify({ period, campaign, range }));
+    } catch {
+      // Keep this session usable even when persistence is unavailable.
+    }
+  }, [filtersReady, filterStorageKey, period, campaign, range.start, range.end]);
   const refreshing = useRef(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
@@ -242,7 +270,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     history.replaceState(null, '', `?tab=${t}`);
   }
   async function refresh(sync = false, quiet = false) {
-    if (refreshing.current) return;
+    if (!filtersReady || refreshing.current) return;
     if (demo) {
       setData(demoData(Number(period) || 7, campaign));
       notify('Dados de demonstração atualizados.');
@@ -285,6 +313,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     }
   }
   useEffect(() => {
+    if (!filtersReady) return;
     if (demo) {
       setData(demoData(Number(period) || 7, campaign));
       return;
@@ -306,9 +335,9 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     return () => {
       cancelled = true;
     };
-  }, [demo, period, range.start, range.end, campaign, adset, ad]);
+  }, [filtersReady, demo, period, range.start, range.end, campaign, adset, ad]);
   useEffect(() => {
-    if (demo || !['overview', 'campaigns', 'sales'].includes(tab)) return;
+    if (!filtersReady || demo || !['overview', 'campaigns', 'sales'].includes(tab)) return;
     const timer = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       if (period !== 'custom') {
@@ -323,6 +352,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     }, 30000);
     return () => clearInterval(timer);
   }, [
+    filtersReady,
     demo,
     tab,
     period,
@@ -704,6 +734,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   <CalendarDays size={15} />
                   <select
                     aria-label="Período"
+                    disabled={!filtersReady}
                     value={period}
                     onChange={(e) => {
                       setPeriod(e.target.value);
@@ -724,6 +755,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   <Layers3 size={15} />
                   <select
                     aria-label="Campanha"
+                    disabled={!filtersReady}
                     value={campaign}
                     onChange={(e) => {
                       setCampaign(e.target.value);
@@ -751,7 +783,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={busy}
+                disabled={!filtersReady || busy}
                 onClick={() => void refresh(true)}
               >
                 <RefreshCw size={14} className={busy ? 'spin' : ''} />
