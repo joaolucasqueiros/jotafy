@@ -76,42 +76,65 @@ export async function runJobs(
     try {
       const checkpoint = (client?: PoolClient) => renewJobLease(job.id, job.attempts + 1, client);
       await checkpoint();
+      let receipt: { events_received: number; fbtrace_id?: string } | null = null;
       if (job.kind === 'meta_sync') await syncMeta(job.workspace_id, checkpoint);
-      else if (job.kind === 'capi') {
+      else if (job.kind === 'capi' || job.kind === 'capi_test') {
         const [w] = await query(
           'SELECT pixel_id,capi_token,test_event_code FROM workspaces WHERE id=$1',
           [job.workspace_id],
         );
         if (!w?.pixel_id || !w?.capi_token)
           throw new Error('CAPI não configurada; configure Pixel e token em Integrações.');
+        const event = job.kind === 'capi_test' ? job.payload.event : job.payload;
+        const testCode = job.kind === 'capi_test' ? job.payload.test_event_code : w.test_event_code;
         if (
-          !job.payload.user_data ||
-          !['em', 'ph', 'fbc', 'fbp', 'external_id'].some((k) => job.payload.user_data[k])
+          job.kind === 'capi_test' &&
+          (!/^TEST[A-Za-z0-9_-]{1,80}$/.test(testCode || '') || job.payload.pixel_id !== w.pixel_id)
+        )
+          throw new Error('Teste sem código válido ou Pixel alterado. Crie um novo teste.');
+        if (
+          !event?.user_data ||
+          !['em', 'ph', 'fbc', 'fbp', 'external_id'].some((k) => event.user_data[k])
         )
           throw new Error('Evento sem identificador de correspondência consentido.');
         if (
-          job.payload.action_source === 'website' &&
-          (!job.payload.event_source_url || !job.payload.user_data.client_user_agent)
+          event.action_source === 'website' &&
+          (!event.event_source_url || !event.user_data.client_user_agent)
         )
           throw new Error(
             'Evento website sem URL ou user agent do clique; preserve mt_click no checkout.',
           );
-        const result = await graphRequest<{ events_received: number }>(
+        const result = await graphRequest<{ events_received: number; fbtrace_id?: string }>(
           `${w.pixel_id}/events`,
           decrypt(w.capi_token),
           {
-            data: JSON.stringify([job.payload]),
-            ...(w.test_event_code ? { test_event_code: w.test_event_code } : {}),
+            data: JSON.stringify([event]),
+            ...(testCode ? { test_event_code: testCode } : {}),
           },
           'POST',
         );
         if (result.events_received !== 1)
           throw new Error('Meta não confirmou o recebimento do evento.');
+        if (job.kind === 'capi_test')
+          receipt = {
+            events_received: result.events_received,
+            ...(typeof result.fbtrace_id === 'string'
+              ? { fbtrace_id: result.fbtrace_id.slice(0, 200) }
+              : {}),
+          };
       } else throw new Error('Tipo de job desconhecido.');
-      const done = await query(
-        "UPDATE jobs SET status='completed',completed_at=now(),locked_until=NULL,last_error=NULL WHERE id=$1 AND attempts=$2 AND status='running' AND locked_until>clock_timestamp() RETURNING id",
-        [job.id, job.attempts + 1],
-      );
+      const done = await transaction(async (client) => {
+        const { rows } = await client.query(
+          "UPDATE jobs SET status='completed',completed_at=now(),locked_until=NULL,last_error=NULL WHERE id=$1 AND attempts=$2 AND status='running' AND locked_until>clock_timestamp() RETURNING id",
+          [job.id, job.attempts + 1],
+        );
+        if (rows.length && receipt)
+          await client.query(
+            "INSERT INTO audit_log(workspace_id,action,target,details) VALUES($1,'tracking_test_accepted',$2,$3)",
+            [job.workspace_id, job.id, JSON.stringify(receipt)],
+          );
+        return rows;
+      });
       if (!done.length) throw new Error('A execução perdeu o bloqueio antes da conclusão.');
       completed++;
     } catch (error) {

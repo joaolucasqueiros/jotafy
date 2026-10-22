@@ -1,6 +1,6 @@
 # MetaTrack
 
-Plataforma de atribuição de vendas para **Meta Ads + Cakto**, com dashboard em português, autenticação, PostgreSQL, pixel consentido e processamento server-side. O backend roda em Node.js nos Route Handlers do Next.js; não é necessário manter um segundo servidor NestJS.
+Plataforma de atribuição de vendas para **Meta Ads + Cakto**, com dashboard em português, autenticação, PostgreSQL, pixel com coleta configurável e processamento server-side. O backend roda em Node.js nos Route Handlers do Next.js; não é necessário manter um segundo servidor NestJS.
 
 A página inicial sem sessão abre uma demonstração explicitamente identificada, com dados ilustrativos. Ao criar uma conta, o workspace começa vazio e exibe apenas seus dados persistidos. A demonstração nunca chama a Meta para editar campanhas.
 
@@ -149,3 +149,11 @@ Esta entrega é a base funcional da versão 1.0, não uma certificação de pron
 <!-- Cloudflare: reenviar versão com diagnóstico de configuração do Meta OAuth. -->
 
 **Windows com dois cliques:** use [Atualizar-MetaTrack.cmd](Atualizar-MetaTrack.cmd) para processar a fila localmente uma vez. Veja [o passo a passo](docs/windows-worker.md).
+
+## Testar recebimento e envio de eventos
+
+Em Rastreamento, o bloco **Testar envio ao Facebook** enfileira PageView, ViewContent, InitiateCheckout ou Purchase em modo de teste. Informe uma URL de origem autorizada e o código `TEST…` copiado da aba Testar eventos do Gerenciador de Eventos da Meta. O código vale somente para o job de teste; não altera o modo dos eventos reais. O usuário confirma o envio dos dados técnicos do navegador no formulário.
+
+A rota autenticada `/api/tracking/test` não chama a Meta na Cloudflare: o processador Node executa `capi_test`. Uma resposta `events_received: 1` é persistida em auditoria com o fbtrace_id retornado, sem tokens. A tela distingue recebido, pendente, enviado e aceito. Sem processador ativo, o teste permanece pendente. Um teste nunca cria `orders`, `clicks` ou `tracking_events`, e não altera o funil, receita ou o total de CAPI real. Não há migração nova.
+
+O bloco **Eventos recebidos da página** mostra os últimos 20 eventos reais do workspace com URL, horário, eventID e estado do job de entrega. Confira PageView após abrir a página; a simulação isolada valida CAPI, enquanto esse monitor valida a chegada do script. A consulta atualiza a cada 15 segundos com a aba visível e pode ser atualizada manualmente. Os testes automatizados usam Meta simulada e banco isolado, sem enviar conversões para produção.

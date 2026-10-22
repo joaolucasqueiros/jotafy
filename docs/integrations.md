@@ -76,7 +76,7 @@ Com a variável preenchida, o MetaTrack exige a assinatura **e** o segredo nativ
 
 ## Pixel e transporte de atribuição
 
-Em Integrações, autorize origens exatas, por exemplo `https://oferta.exemplo.com`. O coletor recusa origens desconhecidas e exige `consent: true`. CORS não é autenticação e pode ser forjado por clientes fora do navegador; o coletor é deliberadamente público. Ele nunca cria receita com base em um evento do browser.
+Em Integrações, autorize origens exatas, por exemplo `https://oferta.exemplo.com`. O coletor recusa origens desconhecidas. No modo padrão `consented`, exige `consent: true`. Integrações que adotam coleta automática declaram `collectionMode: "automatic"` e não devem afirmar consentimento explícito inexistente; uma recusa explícita (`consent: false`) continua sendo rejeitada. O script público mantém o fluxo consentido; a ponte do Mundo Criativo usa o modo automático e respeita as preferências de desativação e GPC/DNT. CORS não é autenticação e pode ser forjado por clientes fora do navegador; o coletor é deliberadamente público. Ele nunca cria receita com base em um evento do browser.
 
 ```html
 <script src="https://SEU_METATRACK/pixel.js" defer></script>

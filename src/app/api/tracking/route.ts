@@ -3,21 +3,35 @@ import { z } from 'zod';
 import { query, transaction } from '@/lib/db';
 import { handleError, readJson, rateLimit } from '@/lib/http';
 import { HttpError } from '@/lib/security';
-const schema = z.object({
-  key: z.string().regex(/^[a-f0-9]{64}$/),
-  consent: z.literal(true),
-  event: z.enum(['PageView', 'ViewContent', 'InitiateCheckout', 'Purchase']),
-  eventId: z.string().uuid(),
-  clickId: z.string().uuid(),
-  url: z.url().max(3000),
-  utm_source: z.string().max(200).optional(),
-  utm_medium: z.string().max(200).optional(),
-  utm_campaign: z.string().max(100).optional(),
-  utm_term: z.string().max(100).optional(),
-  utm_content: z.string().max(100).optional(),
-  fbc: z.string().max(500).optional(),
-  fbp: z.string().max(500).optional(),
-});
+const schema = z
+  .object({
+    key: z.string().regex(/^[a-f0-9]{64}$/),
+    consent: z.boolean().optional(),
+    collectionMode: z.enum(['consented', 'automatic']).default('consented'),
+    event: z.enum(['PageView', 'ViewContent', 'InitiateCheckout', 'Purchase']),
+    eventId: z.string().uuid(),
+    clickId: z.string().uuid(),
+    url: z.url().max(3000),
+    utm_source: z.string().max(200).optional(),
+    utm_medium: z.string().max(200).optional(),
+    utm_campaign: z.string().max(100).optional(),
+    utm_term: z.string().max(100).optional(),
+    utm_content: z.string().max(100).optional(),
+    fbc: z.string().max(500).optional(),
+    fbp: z.string().max(500).optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (
+      (input.collectionMode === 'consented' && input.consent !== true) ||
+      input.consent === false
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['consent'],
+        message: 'Rastreamento recusado ou consentimento ausente no modo consentido.',
+      });
+    }
+  });
 async function cors(request: Request, key: string) {
   const [w] = await query('SELECT id,allowed_origins FROM workspaces WHERE public_key=$1', [key]);
   const origin = request.headers.get('origin');

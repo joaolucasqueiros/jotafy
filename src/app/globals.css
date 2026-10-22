@@ -3649,3 +3649,28 @@ td small {
     gap: 5px;
   }
 }
+
+.tracking-test-panel {
+  margin-bottom: 20px;
+}
+.tracking-test-panel code {
+  display: block;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.tracking-test-panel td small {
+  display: block;
+  margin-top: 4px;
+}
+.tracking-test-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.tracking-test-consent input {
+  width: auto;
+  margin-top: 3px;
+}

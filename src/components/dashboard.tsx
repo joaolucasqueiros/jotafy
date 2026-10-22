@@ -58,6 +58,7 @@ import {
 } from './dashboard-layout';
 import { ConversionFunnel } from './conversion-funnel';
 import { IntegrationStatus } from './integration-status';
+import { TrackingTestPanel } from './tracking-test-panel';
 import { Modal } from './ui/modal';
 import { CostSettings } from './cost-settings';
 import { Button } from './ui/button';
@@ -1424,7 +1425,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   <span className="subtle-badge">SERVER-SIDE TRACKING</span>
                   <h2>Conecte cada venda à sua origem.</h2>
                   <p>
-                    O pixel registra os cliques consentidos. A Cakto confirma a compra.
+                    O pixel registra visitas e cliques. A Cakto confirma a compra.
                     <br />O servidor conecta os dados e envia a conversão para a Meta.
                   </p>
                 </div>
@@ -1443,7 +1444,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   {
                     icon: Code2,
                     title: '2. Pixel MetaTrack',
-                    text: 'Identificadores de clique, com consentimento.',
+                    text: 'Identificadores de clique conforme as preferências da página.',
                   },
                   {
                     icon: ShoppingBag,
@@ -1463,6 +1464,11 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                   </div>
                 ))}
               </div>
+              <TrackingTestPanel
+                demo={demo}
+                origins={integration?.allowedOrigins || []}
+                defaultCode={integration?.testEventCode || null}
+              />
               <section className="panel code-panel">
                 <div className="panel-heading">
                   <div>
@@ -1524,7 +1530,13 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                       <tbody>
                         {integration.jobs.map((j, i) => (
                           <tr key={i}>
-                            <td>{j.kind === 'capi' ? 'Meta CAPI' : 'Sincronização Meta'}</td>
+                            <td>
+                              {j.kind === 'capi_test'
+                                ? 'Teste Meta CAPI'
+                                : j.kind === 'capi'
+                                  ? 'Meta CAPI'
+                                  : 'Sincronização Meta'}
+                            </td>
                             <td>
                               <span className="subtle-badge">{j.status}</span>
                             </td>

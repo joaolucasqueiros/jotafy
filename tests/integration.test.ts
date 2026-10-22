@@ -10,6 +10,8 @@ const { ingestCakto } = await import('../src/lib/orders');
 const { dashboard } = await import('../src/lib/dashboard');
 const { integrationDiagnostics } = await import('../src/lib/integration-diagnostics');
 const { retryJob } = await import('../src/lib/retry-job');
+const { enqueueTrackingTest, trackingTestSchema } = await import('../src/lib/tracking-tests');
+const { withConnection } = await import('../src/lib/db');
 const { runJobs, renewJobLease } = await import('../src/lib/jobs');
 const { rateLimit } = await import('../src/lib/http');
 const { verifyRelaySignature } = await import('../src/lib/signature');
@@ -532,6 +534,96 @@ test('diagnostics and retry stay scoped and preserve conversion identity', async
   await assert.rejects(() => retryJob(w.id, job.id), /expirado/);
 });
 
+test('simulated events require test mode, isolate metrics and retain the Meta receipt', async () => {
+  const raw = await workspace();
+  const w = {
+    ...raw,
+    pixel_id: '1234567890',
+    capi_token: encrypt('qa-test-token'),
+    allowed_origins: ['https://store.example'],
+  };
+  await query('UPDATE workspaces SET pixel_id=$2,capi_token=$3,allowed_origins=$4 WHERE id=$1', [
+    w.id,
+    w.pixel_id,
+    w.capi_token,
+    w.allowed_origins,
+  ]);
+  const enqueue = (event: string) =>
+    withConnection((client) =>
+      enqueueTrackingTest(
+        client,
+        w,
+        trackingTestSchema.parse({
+          event,
+          testEventCode: 'TEST12345',
+          url: 'https://store.example/offer?email=do-not-send',
+          consent: true,
+        }),
+        'QA browser',
+      ),
+    );
+  const pageView = await enqueue('PageView');
+  const purchase = await enqueue('Purchase');
+  const requests: URLSearchParams[] = [];
+  const accepted = mock.method(globalThis, 'fetch', async (_url: unknown, options: RequestInit) => {
+    requests.push(new URLSearchParams(String(options.body)));
+    return Response.json({ events_received: 1, fbtrace_id: 'qa_meta_trace' });
+  });
+  try {
+    for (const testJob of [pageView, purchase])
+      assert.equal((await runJobs(1, { workspaceId: w.id, jobId: testJob.jobId })).completed, 1);
+  } finally {
+    accepted.mock.restore();
+  }
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.equal(request.get('test_event_code'), 'TEST12345');
+    const event = JSON.parse(request.get('data')!)[0];
+    assert.match(event.event_id, /^test:/);
+    assert.equal(event.event_source_url, 'https://store.example/offer');
+    assert.equal(event.user_data.external_id[0].length, 64);
+  }
+  const [receipt] = await query(
+    "SELECT details FROM audit_log WHERE workspace_id=$1 AND target=$2 AND action='tracking_test_accepted'",
+    [w.id, purchase.jobId],
+  );
+  assert.deepEqual(receipt.details, { events_received: 1, fbtrace_id: 'qa_meta_trace' });
+  const stats = await integrationDiagnostics(w.id);
+  assert.equal(stats.pageviews, 0);
+  assert.equal(stats.checkouts, 0);
+  assert.equal(stats.approvedOrders, 0);
+  assert.equal(stats.acceptedCapi, 0);
+  const content = await enqueue('ViewContent');
+  const refused = mock.method(globalThis, 'fetch', async () =>
+    Response.json({ events_received: 0 }),
+  );
+  try {
+    assert.equal((await runJobs(1, { workspaceId: w.id, jobId: content.jobId })).failed, 1);
+  } finally {
+    refused.mock.restore();
+  }
+  assert.equal(
+    (
+      await query(
+        "SELECT * FROM audit_log WHERE workspace_id=$1 AND target=$2 AND action='tracking_test_accepted'",
+        [w.id, content.jobId],
+      )
+    ).length,
+    0,
+  );
+  const checkout = await enqueue('InitiateCheckout');
+  await query("UPDATE jobs SET payload=payload-'test_event_code' WHERE id=$1", [checkout.jobId]);
+  const forbidden = mock.method(globalThis, 'fetch', async () => {
+    throw new Error('test must not reach Meta without code');
+  });
+  try {
+    await runJobs(1, { workspaceId: w.id, jobId: checkout.jobId });
+    assert.equal(forbidden.mock.callCount(), 0);
+  } finally {
+    forbidden.mock.restore();
+  }
+});
+
 const base = process.env.TEST_BASE_URL;
 test(
   'HTTP: sessions, CSRF, webhook authentication, CORS and tenant boundaries',
@@ -715,6 +807,57 @@ test(
     assert.equal(diagnostic.diagnostics.approvedOrders, 1);
     assert(diagnostic.diagnostics.lastWebhookAt);
     assert.equal(diagnostic.diagnostics.acceptedCapi, 0);
+    const testInput = {
+      event: 'Purchase',
+      testEventCode: 'TEST12345',
+      url: 'https://store.example/offer',
+      consent: true,
+    };
+    assert.equal(
+      (await call('/api/tracking/test', testInput, cookie, 'https://evil.example')).status,
+      403,
+    );
+    assert.equal(
+      (await call('/api/tracking/test', { ...testInput, testEventCode: '' }, cookie)).status,
+      400,
+    );
+    const testResponse = await call('/api/tracking/test', testInput, cookie);
+    assert.equal(testResponse.status, 202);
+    const testResult = await testResponse.json();
+    const monitoring = await (await call('/api/tracking/test', undefined, cookie)).json();
+    assert.equal(monitoring.tests.length, 1);
+    assert.equal(monitoring.tests[0].id, testResult.jobId);
+    assert.equal(monitoring.tests[0].status, 'pending');
+    assert(monitoring.events.some((e: { event_name: string }) => e.event_name === 'PageView'));
+    assert.equal((await integrationDiagnostics(httpWorkspace.id)).approvedOrders, 1);
+    const { consent: _consent, ...automatic } = pixel;
+    assert.equal(
+      (
+        await call(
+          '/api/tracking',
+          { ...automatic, collectionMode: 'automatic', eventId: crypto.randomUUID() },
+          undefined,
+          'https://store.example',
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await call(
+          '/api/tracking',
+          {
+            ...automatic,
+            consent: false,
+            collectionMode: 'automatic',
+            eventId: crypto.randomUUID(),
+          },
+          undefined,
+          'https://store.example',
+        )
+      ).status,
+      400,
+    );
     const [failedJob] = await query(
       "UPDATE jobs SET status='failed' WHERE workspace_id=$1 AND kind='capi' RETURNING id,payload",
       [httpWorkspace.id],

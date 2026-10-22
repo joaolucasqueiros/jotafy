@@ -12,15 +12,16 @@ export async function retryJob(workspaceId: string, jobId: string) {
     if (!job) throw new HttpError(404, 'Trabalho não encontrado.');
     if (job.status !== 'failed')
       throw new HttpError(409, 'Somente trabalhos com falha definitiva podem ser reagendados.');
-    if (!['capi', 'meta_sync'].includes(job.kind))
+    if (!['capi', 'capi_test', 'meta_sync'].includes(job.kind))
       throw new HttpError(409, 'Tipo de trabalho não suportado.');
-    if (job.kind === 'capi') {
-      const timestamp = Number(job.payload?.event_time) * 1000;
+    if (job.kind === 'capi' || job.kind === 'capi_test') {
+      const payload = job.kind === 'capi_test' ? job.payload?.event : job.payload;
+      const timestamp = Number(payload?.event_time) * 1000;
       if (
         !Number.isFinite(timestamp) ||
         timestamp > Date.now() ||
         timestamp <= Date.now() - 7 * 86400000 ||
-        !job.payload?.event_id
+        !payload?.event_id
       ) {
         throw new HttpError(
           409,

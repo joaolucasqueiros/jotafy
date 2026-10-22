@@ -8,7 +8,7 @@ Publique a branch `main` do `mundocriativo` e do `jotafy` pelos builds Cloudflar
 
 No Jotafy, em Integrações, adicione `mundocriativo.joaolucasqueirozag.workers.dev` nas origens permitidas e salve. A aplicação completa HTTPS e remove a barra final. Ao reabrir a aba, confira o domínio e o bloco Diagnóstico das integrações.
 
-A página Mundo Criativo usa o coletor Jotafy com a chave pública já fornecida. Depois de aceitar o rastreamento, uma visita deve aumentar PageView no diagnóstico e um clique de compra deve aumentar InitiateCheckout. Recusar mantém a compra funcional, sem esses envios. O diagnóstico mostra 7 dias do workspace, enquanto o funil usa o período e os filtros selecionados.
+A página Mundo Criativo usa o coletor Jotafy com a chave pública já fornecida. A medição da página inicia automaticamente, sem aviso. Uma visita deve aumentar PageView e um clique de compra deve aumentar InitiateCheckout. Desativar no rodapé ou sinalizar GPC/DNT mantém a compra funcional, sem esses envios. O diagnóstico mostra 7 dias do workspace, enquanto o funil usa o período e os filtros selecionados.
 
 ## Confirmar a Cakto
 
@@ -37,3 +37,5 @@ No diagnóstico, verifique último trabalho concluído, fila e envios aceitos pe
 ## Critério de validação
 
 Valide um clique real autorizado, um checkout, uma aprovação Cakto, sua campanha e o aceite correspondente na Meta. Confira reenvio sem duplicação e atualização automática posterior. Confirme também valores, taxas, reembolsos e custos na operação. Os testes locais usam banco isolado e respostas externas simuladas; não comprovam configuração, publicação ou recebimento nos serviços de produção.
+
+Na aba Rastreamento, use Testar envio ao Facebook com o código TEST da Meta. O envio é separado das métricas reais e depende do mesmo processador Node. O histórico mostra recibo somente após aceite da API. Não confunda uma simulação aceita com a verificação de PageView real: confira também Eventos recebidos da página.
