@@ -21,13 +21,15 @@ type Event = {
   delivery_status: string | null;
   last_error: string | null;
 };
-const state = (value: string | null) =>
-  ({
-    pending: 'Aguardando processador',
-    running: 'Enviando',
-    completed: 'Aceito pela Meta',
-    failed: 'Falhou',
-  })[value || ''] || 'Somente recebido';
+const state = (value: string | null, lastError: string | null) =>
+  value === 'pending' && lastError
+    ? 'Reenvio agendado'
+    : {
+        pending: 'Aguardando processador',
+        running: 'Enviando',
+        completed: 'Aceito pela Meta',
+        failed: 'Falhou',
+      }[value || ''] || 'Somente recebido';
 const date = (value: string) =>
   new Date(value).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
@@ -141,7 +143,7 @@ export function TrackingTestPanel({
           </label>
           <p className="field-hint">
             Copie o código em Gerenciador de Eventos → seu Pixel → Testar eventos. Ele vale só para
-            este envio. O processador Node/GitHub Actions precisa estar ativo.
+            este envio. O processador precisa estar ativo.
           </p>
           <Button type="submit" disabled={busy || (!demo && !origins.length)}>
             {busy ? 'Registrando teste…' : 'Enviar evento de teste'}
@@ -170,7 +172,7 @@ export function TrackingTestPanel({
                   </td>
                   <td>{date(test.created_at)}</td>
                   <td>
-                    {state(test.status)}
+                    {state(test.status, test.last_error)}
                     {test.receipt && (
                       <small>
                         {test.receipt.events_received} evento recebido pela Meta
@@ -219,7 +221,7 @@ export function TrackingTestPanel({
                   <td>{date(item.created_at)}</td>
                   <td>{item.landing_url || '—'}</td>
                   <td>
-                    {state(item.delivery_status)}
+                    {state(item.delivery_status, item.last_error)}
                     {item.last_error && <small className="error-cell">{item.last_error}</small>}
                   </td>
                 </tr>

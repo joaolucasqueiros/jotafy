@@ -534,6 +534,83 @@ test('diagnostics and retry stay scoped and preserve conversion identity', async
   await assert.rejects(() => retryJob(w.id, job.id), /expirado/);
 });
 
+test('CAPI rejection retains safe Meta details and retries the same event with the Pixel token', async () => {
+  const w = await workspace();
+  const token = 'qa-private-capi-token';
+  await query('UPDATE workspaces SET pixel_id=$2,capi_token=$3 WHERE id=$1', [
+    w.id,
+    '1234567890',
+    encrypt(token),
+  ]);
+  const event = {
+    event_name: 'PageView',
+    event_id: crypto.randomUUID(),
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: 'website',
+    event_source_url: 'https://store.example/',
+    user_data: { fbp: 'fb.1.1234567890123.12345', client_user_agent: 'QA browser' },
+  };
+  const [job] = await query(
+    "INSERT INTO jobs(workspace_id,kind,dedupe_key,payload) VALUES($1,'capi',$2,$3) RETURNING id",
+    [w.id, event.event_id, JSON.stringify(event)],
+  );
+  const logs: string[] = [];
+  const logger = mock.method(console, 'error', (value: string) => {
+    logs.push(value);
+  });
+  let calls = 0;
+  const provider = mock.method(globalThis, 'fetch', async (_url: unknown, options: RequestInit) => {
+    calls++;
+    assert.equal((options.headers as Record<string, string>).Authorization, `Bearer ${token}`);
+    const body = new URLSearchParams(String(options.body));
+    assert.equal(body.has('appsecret_proof'), false);
+    assert.deepEqual(JSON.parse(body.get('data')!), [event]);
+    return calls === 1
+      ? Response.json(
+          {
+            error: {
+              code: 100,
+              error_subcode: 999,
+              message: `Invalid parameter; access_token=${token}`,
+            },
+          },
+          { status: 400 },
+        )
+      : Response.json({ events_received: 1 });
+  });
+  try {
+    const scope = { workspaceId: w.id, jobId: job.id };
+    assert.deepEqual(await runJobs(1, scope), { completed: 0, failed: 1 });
+    const [failed] = await query('SELECT status,last_error,payload FROM jobs WHERE id=$1', [
+      job.id,
+    ]);
+    assert.equal(failed.status, 'pending');
+    assert.match(failed.last_error, /código 100, subcódigo 999/);
+    assert.match(failed.last_error, /Invalid parameter/);
+    assert(!failed.last_error.includes(token));
+    assert.deepEqual(failed.payload, event);
+    const log = JSON.parse(logs[0]);
+    assert.equal(log.event, 'processor_job_failed');
+    assert.equal(log.job_id, job.id);
+    assert.equal(log.attempt, 1);
+    assert.equal(log.retry_scheduled, true);
+    assert(!logs[0].includes(token));
+    assert(!logs[0].includes('QA browser'));
+    await query('UPDATE jobs SET run_at=now() WHERE id=$1', [job.id]);
+    assert.deepEqual(await runJobs(1, scope), { completed: 1, failed: 0 });
+    const [delivered] = await query('SELECT status,last_error,attempts FROM jobs WHERE id=$1', [
+      job.id,
+    ]);
+    assert.equal(delivered.status, 'completed');
+    assert.equal(delivered.last_error, null);
+    assert.equal(delivered.attempts, 2);
+    assert.equal(calls, 2);
+  } finally {
+    logger.mock.restore();
+    provider.mock.restore();
+  }
+});
+
 test('simulated events require test mode, isolate metrics and retain the Meta receipt', async () => {
   const raw = await workspace();
   const w = {
@@ -577,6 +654,7 @@ test('simulated events require test mode, isolate metrics and retain the Meta re
   }
   assert.equal(requests.length, 2);
   for (const request of requests) {
+    assert.equal(request.has('appsecret_proof'), false);
     assert.equal(request.get('test_event_code'), 'TEST12345');
     const event = JSON.parse(request.get('data')!)[0];
     assert.match(event.event_id, /^test:/);

@@ -23,6 +23,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const { createProcessorServer } = await import('../src/lib/processor-http');
 const { scheduleSyncs, runJobs, cleanup } = await import('../src/lib/jobs');
 const { db } = await import('../src/lib/db');
+const { safeProviderMessage } = await import('../src/lib/provider-errors');
 let lastCleanup = 0;
 const processor = createProcessorServer({
   secret: process.env.CRON_SECRET!,
@@ -36,7 +37,17 @@ const processor = createProcessorServer({
     }
   },
   onError: (error) =>
-    console.error('processor_cycle_failed', error instanceof Error ? error.name : 'Unknown'),
+    console.error(
+      JSON.stringify({
+        event: 'processor_cycle_failed',
+        message: safeProviderMessage(error instanceof Error ? error.message : null, [
+          process.env.DATABASE_URL!,
+          process.env.ENCRYPTION_KEY!,
+          process.env.META_APP_SECRET!,
+          process.env.CRON_SECRET!,
+        ]),
+      }),
+    ),
 });
 processor.server.listen(port, '0.0.0.0', () =>
   console.log(JSON.stringify({ event: 'processor_http_started', port })),

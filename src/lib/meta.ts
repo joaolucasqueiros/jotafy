@@ -4,18 +4,28 @@ import type { PoolClient } from 'pg';
 import { decrypt, HttpError } from './security';
 import { dateRange } from './format';
 import { landingPageViews, type MetaAction } from './meta-insights';
+import { safeProviderMessage } from './provider-errors';
 const graph = () => `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v25.0'}`;
 export async function graphRequest<T = Record<string, unknown>>(
   path: string,
   token: string,
   params: Record<string, string> = {},
   method = 'GET',
+  authentication: 'app' | 'conversions' = 'app',
 ): Promise<T> {
   if (!/^[a-zA-Z0-9_/-]+$/.test(path)) throw new Error('Invalid Graph path');
-  const proof = createHmac('sha256', process.env.META_APP_SECRET || '')
-    .update(token)
-    .digest('hex');
-  const data = new URLSearchParams({ ...params, appsecret_proof: proof });
+  // Events Manager CAPI tokens need not belong to our OAuth app. A proof made with
+  // our app secret is invalid for those tokens. Keep proof for our OAuth requests.
+  const proof =
+    authentication === 'app'
+      ? createHmac('sha256', process.env.META_APP_SECRET || '')
+          .update(token)
+          .digest('hex')
+      : '';
+  const data = new URLSearchParams(params);
+  data.delete('access_token');
+  data.delete('appsecret_proof');
+  if (proof) data.set('appsecret_proof', proof);
   const response = await fetch(`${graph()}/${path}${method === 'GET' ? `?${data}` : ''}`, {
     method,
     headers: {
@@ -27,11 +37,23 @@ export async function graphRequest<T = Record<string, unknown>>(
     cache: 'no-store',
   });
   const body = await response.json();
-  if (!response.ok || body.error)
+  if (!response.ok || body.error) {
+    const code = typeof body.error?.code === 'number' ? body.error.code : response.status;
+    const subcode =
+      typeof body.error?.error_subcode === 'number'
+        ? `, subcódigo ${body.error.error_subcode}`
+        : '';
+    const detail = [body.error?.error_user_msg, body.error?.message].find(
+      (value) => typeof value === 'string' && value.trim(),
+    );
     throw new HttpError(
       502,
-      `Meta: ${body.error?.error_user_msg || 'operação recusada; verifique permissões, token e limites da API.'} (código ${body.error?.code || response.status})`,
+      safeProviderMessage(
+        `Meta (código ${code}${subcode}): ${detail || 'operação recusada; verifique permissões, token e limites da API.'}`,
+        [token, proof, process.env.META_APP_SECRET || ''],
+      ),
     );
+  }
   return body as T;
 }
 export async function graphAll<T>(

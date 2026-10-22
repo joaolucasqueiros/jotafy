@@ -65,3 +65,68 @@ test('Graph provider errors fail explicitly', async () => {
     fn.mock.restore();
   }
 });
+
+test('CAPI token authentication does not sign an Events Manager token with the OAuth app secret', async () => {
+  const fn = mock.method(globalThis, 'fetch', async (input: unknown, init?: RequestInit) => {
+    const url = new URL(String(input));
+    assert.equal(url.pathname, '/v25.0/123/events');
+    assert.equal(url.search, '');
+    assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer capi-test-token');
+    const body = new URLSearchParams(init?.body as URLSearchParams);
+    assert.equal(body.has('appsecret_proof'), false);
+    assert.equal(body.has('access_token'), false);
+    assert.equal(body.get('test_event_code'), 'TEST123');
+    assert.deepEqual(JSON.parse(body.get('data')!), [{ event_name: 'PageView' }]);
+    return Response.json({ events_received: 1 });
+  });
+  try {
+    assert.deepEqual(
+      await graphRequest(
+        '123/events',
+        'capi-test-token',
+        {
+          data: JSON.stringify([{ event_name: 'PageView' }]),
+          test_event_code: 'TEST123',
+          appsecret_proof: 'wrong-app-proof',
+          access_token: 'must-not-send',
+        },
+        'POST',
+        'conversions',
+      ),
+      { events_received: 1 },
+    );
+  } finally {
+    fn.mock.restore();
+  }
+});
+
+test('Meta errors preserve actionable message and subcode without credentials', async () => {
+  const token = 'qa-private-token';
+  const proof = createHmac('sha256', process.env.META_APP_SECRET!).update(token).digest('hex');
+  const fn = mock.method(globalThis, 'fetch', async () =>
+    Response.json(
+      {
+        error: {
+          code: 100,
+          error_subcode: 999,
+          message: `Invalid appsecret_proof provided: ${proof}, access_token=${token}`,
+        },
+      },
+      { status: 400 },
+    ),
+  );
+  try {
+    await assert.rejects(
+      () => graphRequest('me', token),
+      (error: Error) => {
+        assert.match(error.message, /código 100, subcódigo 999/);
+        assert.match(error.message, /Invalid appsecret_proof/);
+        assert(!error.message.includes(token));
+        assert(!error.message.includes(proof));
+        return true;
+      },
+    );
+  } finally {
+    fn.mock.restore();
+  }
+});

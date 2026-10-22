@@ -36,6 +36,13 @@ test('tracking receives a test, monitors real PageView and displays a confirmed 
     const live = page.getByRole('region', { name: 'Eventos recebidos da página' });
     await expect(live).toContainText('PageView');
     await expect(live).toContainText('https://store.example/offer');
+    await pool.query(
+      "UPDATE jobs SET attempts=1,last_error='Meta (código 100): Invalid parameter' WHERE workspace_id=$1 AND kind='capi'",
+      [w.id],
+    );
+    await live.getByRole('button', { name: 'Atualizar eventos' }).click();
+    await expect(live).toContainText('Reenvio agendado');
+    await expect(live).toContainText('Meta (código 100): Invalid parameter');
     const panel = page.getByRole('region', { name: 'Testar envio ao Facebook' });
     await panel.getByLabel('Código de teste da Meta').fill('TEST12345');
     await panel.getByLabel('Evento de teste').selectOption('Purchase');

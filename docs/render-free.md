@@ -49,6 +49,12 @@ Execute manualmente o agendamento uma vez. Confira os logs do serviço: `process
 
 Em Jotafy → Rastreamento, gere um teste com o código TEST da Meta. Após um ciclo, confirme “Aceito pela Meta” e o recibo. Se houver erro, confira a mensagem do job. Segredos incorretos retornam 401 no disparo; falha de banco ocorre no ciclo e fica indicada nos logs sem expor a URL de conexão. Configurações ausentes impedem o serviço de iniciar e registram somente os nomes das variáveis faltantes.
 
+Se `completed=0` e `failed>0`, abra a mensagem `processor_job_failed` no Render ou “Último erro” no painel. Ela inclui o código, o subcódigo quando disponível e a explicação retornada pela Meta, com credenciais ocultadas. “Reenvio agendado” indica que houve uma falha e o job aguarda a próxima tentativa; não significa recebimento pela Meta. Depois de dez tentativas, o job fica como falhou e pode ser reagendado no painel após corrigir a causa.
+
+O token CAPI salvo em Integrações autentica o envio ao Pixel. Tokens gerados no Gerenciador de Eventos podem pertencer a outro aplicativo: o envio CAPI não acrescenta `appsecret_proof` calculado com o segredo do aplicativo OAuth do painel. A sincronização de anúncios continua usando essa prova com o token do próprio aplicativo. Um erro 100 também pode indicar parâmetros inválidos; use a explicação da Meta para distinguir a causa, sem trocar tokens às cegas.
+
+O aviso do `pg` sobre mudanças futuras em `sslmode=require` não confirma uma falha de envio. Para manter explicitamente a validação TLS atual, use `sslmode=verify-full` na `DATABASE_URL`, preservando os outros parâmetros e a configuração de certificados do provedor. Não desative a validação de certificados.
+
 Depois de validar o Render, você pode desativar o workflow GitHub Actions antigo para manter apenas um agendador. O GitHub Actions e o Render usam as mesmas travas de jobs, mas não é necessário manter ambos para esta configuração.
 
 ## Operação

@@ -2,6 +2,7 @@ import { query, transaction } from './db';
 import type { PoolClient } from 'pg';
 import { decrypt } from './security';
 import { syncMeta, graphRequest } from './meta';
+import { safeProviderMessage } from './provider-errors';
 export async function renewJobLease(
   id: string,
   attempt: number,
@@ -112,6 +113,7 @@ export async function runJobs(
             ...(testCode ? { test_event_code: testCode } : {}),
           },
           'POST',
+          'conversions',
         );
         if (result.events_received !== 1)
           throw new Error('Meta não confirmou o recebimento do evento.');
@@ -139,10 +141,7 @@ export async function runJobs(
       completed++;
     } catch (error) {
       const attempts = job.attempts + 1;
-      const message =
-        error instanceof Error
-          ? error.message.replace(/EA[A-Za-z0-9_-]{20,}/g, '[redacted]').slice(0, 300)
-          : 'Falha no provedor';
+      const message = safeProviderMessage(error instanceof Error ? error.message : null);
       await query(
         "UPDATE jobs SET status=$2,last_error=$3,locked_until=NULL,run_at=now()+$4 * interval '1 second' WHERE id=$1 AND attempts=$5 AND status='running'",
         [
@@ -152,6 +151,16 @@ export async function runJobs(
           Math.min(21600, 30 * 2 ** attempts),
           attempts,
         ],
+      );
+      console.error(
+        JSON.stringify({
+          event: 'processor_job_failed',
+          job_id: job.id,
+          kind: job.kind,
+          attempt: attempts,
+          retry_scheduled: attempts < 10,
+          message,
+        }),
       );
       failed++;
     }
