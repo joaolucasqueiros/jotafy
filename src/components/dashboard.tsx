@@ -57,6 +57,7 @@ import {
   useDashboardLayout,
 } from './dashboard-layout';
 import { ConversionFunnel } from './conversion-funnel';
+import { IntegrationStatus } from './integration-status';
 import { Modal } from './ui/modal';
 import { CostSettings } from './cost-settings';
 import { Button } from './ui/button';
@@ -64,6 +65,7 @@ import { RevenueChart, AttributionChart } from './charts';
 import { demoData } from '@/lib/demo';
 import { money, number, percent, dateRange } from '@/lib/format';
 import type { Campaign, DashboardData, Sale } from '@/lib/types';
+import type { IntegrationDiagnostics } from '@/lib/integration-diagnostics';
 type Tab = 'overview' | 'campaigns' | 'sales' | 'tracking' | 'integrations' | 'utms' | 'settings';
 type Integration = {
   publicKey: string;
@@ -78,6 +80,7 @@ type Integration = {
     selected: boolean;
   }[];
   jobs: {
+    id: string;
     kind: string;
     status: string;
     attempts: number;
@@ -90,6 +93,7 @@ type Integration = {
   pixelId: string | null;
   capiConfigured: boolean;
   testEventCode: string | null;
+  diagnostics?: IntegrationDiagnostics;
 };
 const nav: { id: Tab; label: string; icon: LucideIcon; tag?: string }[] = [
   { id: 'overview', label: 'Visão geral', icon: LayoutDashboard },
@@ -1514,6 +1518,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                           <th>STATUS</th>
                           <th>TENTATIVAS</th>
                           <th>ÚLTIMO ERRO</th>
+                          <th>AÇÃO</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1525,6 +1530,29 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                             </td>
                             <td>{j.attempts}</td>
                             <td className="error-cell">{j.last_error || '—'}</td>
+                            <td>
+                              {j.status === 'failed' && j.id ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      await api(`/api/jobs/${j.id}/retry`, {});
+                                      notify(
+                                        'Trabalho reagendado com o mesmo identificador. Aguarde o processador.',
+                                      );
+                                      await loadIntegration();
+                                    } catch (error) {
+                                      notify((error as Error).message);
+                                    }
+                                  }}
+                                >
+                                  Reagendar
+                                </Button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2277,15 +2305,16 @@ function Integrations({
           <label className="form-label">
             Domínios permitidos do pixel · uma origem por linha
             <textarea
-              placeholder={'https://seusite.com.br\nhttps://checkout.seusite.com.br'}
+              placeholder={'seusite.com.br\nhttps://checkout.seusite.com.br'}
               rows={3}
               value={origins}
               onChange={(e) => setOrigins(e.target.value)}
             />
           </label>
           <p className="field-hint">
-            Sem barra final ou caminho. Retire o código de teste antes de enviar conversões de
-            produção. Configure o consentimento no seu site antes de inicializar o pixel.
+            Aceita domínio sem https:// e remove a barra final ao salvar. Use uma origem por linha,
+            sem caminho. Retire o código de teste antes de enviar conversões de produção. Configure
+            o consentimento no seu site antes de inicializar o pixel.
           </p>
         </section>
         <div className="save-bar">
@@ -2299,6 +2328,14 @@ function Integrations({
           </Button>
         </div>
       </form>
+      {i?.diagnostics && (
+        <IntegrationStatus
+          data={i.diagnostics}
+          origins={i.allowedOrigins}
+          capiConfigured={Boolean(i.capiConfigured && i.pixelId)}
+          testMode={Boolean(i.testEventCode)}
+        />
+      )}
     </>
   );
 }

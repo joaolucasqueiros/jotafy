@@ -28,6 +28,11 @@ export default function Guide() {
         npm start. Rode o worker como um serviço separado. Não publique o banco de desenvolvimento
         na Internet.
       </p>
+      <p>
+        Na Cloudflare, publique com o build OpenNext, não com npm start. O processador continua
+        separado: GitHub Actions → MetaTrack - Processador ou um serviço Node contínuo. O site
+        Cloudflare recebe os eventos, mas não processa a fila por /api/jobs.
+      </p>
       <h2>2. Conecte a Meta</h2>
       <ol>
         <li>
@@ -80,6 +85,12 @@ export default function Guide() {
         entregues.
       </p>
       <h2>Como ler as métricas</h2>
+      <p>
+        Em Integrações → Diagnóstico das integrações, confira eventos recebidos, último webhook
+        aceito, fila e envios aceitos pela Meta. Salvar tokens não comprova recebimento. Na aba
+        Rastreamento, corrija a causa do erro e use Reagendar para repetir uma falha definitiva com
+        o mesmo identificador; conversões expiradas não podem ter a data alterada para reenvio.
+      </p>
       <ul>
         <li>
           Faturamento: soma dos pedidos atualmente aprovados, pela data de aprovação no fuso de São

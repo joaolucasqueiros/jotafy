@@ -27,7 +27,7 @@ Em **Configurações → Variáveis e segredos**, configure no runtime do Worker
 - `DATABASE_URL`: PostgreSQL externo acessível ao Workers, com TLS validado. `localhost` na nuvem não aponta para o banco Docker de desenvolvimento.
 - `ENCRYPTION_KEY`: 32 bytes em base64, gerados uma vez, armazenados como segredo. Preserve a mesma chave nos deployments posteriores.
 - `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_VERSION`: para conectar anúncios. O segredo do aplicativo é necessário como valor real no processo, pois calcula HMAC local.
-- `CRON_SECRET`: se usar um agendador externo para chamar `POST /api/jobs` com Bearer.
+- `CRON_SECRET`: somente se usar `POST /api/jobs` em uma implantação Node. O runtime Cloudflare recusa processamento por essa rota; use o processador GitHub Actions ou Node separado.
 
 Execute as migrações com `npm run db:migrate` em um ambiente Node seguro que tenha acesso ao mesmo PostgreSQL. Não execute migrações em cada requisição. O código fecha conexões PostgreSQL de Workers dentro da operação; não compartilha sockets entre requisições. Para escala, use um endpoint de pool do seu provedor ou adapte o binding Hyperdrive do seu ambiente; nenhum ID de Hyperdrive foi inventado no repositório.
 

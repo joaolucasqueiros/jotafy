@@ -3622,3 +3622,30 @@ td small {
   padding: 12px 16px;
   margin-bottom: 16px;
 }
+
+.integration-diagnostics {
+  margin-top: 20px;
+}
+.integration-diagnostics dl {
+  margin: 0;
+}
+.integration-diagnostics dl > div {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 2fr;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.integration-diagnostics dt {
+  font-weight: 600;
+}
+.integration-diagnostics dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .integration-diagnostics dl > div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+}

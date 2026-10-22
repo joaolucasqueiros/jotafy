@@ -8,6 +8,8 @@ const { encrypt, randomToken } = await import('../src/lib/security');
 const { normalizeCakto } = await import('../src/lib/cakto');
 const { ingestCakto } = await import('../src/lib/orders');
 const { dashboard } = await import('../src/lib/dashboard');
+const { integrationDiagnostics } = await import('../src/lib/integration-diagnostics');
+const { retryJob } = await import('../src/lib/retry-job');
 const { runJobs, renewJobLease } = await import('../src/lib/jobs');
 const { rateLimit } = await import('../src/lib/http');
 const { verifyRelaySignature } = await import('../src/lib/signature');
@@ -498,6 +500,38 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
     await query('DELETE FROM rate_limits WHERE key=$1', [key]);
   });
 });
+
+test('diagnostics and retry stay scoped and preserve conversion identity', async () => {
+  const w = await workspace(),
+    other = await workspace();
+  const initial = await integrationDiagnostics(w.id);
+  assert.equal(initial.pendingJobs, 0);
+  assert.equal(initial.lastWebhookAt, null);
+  await ingestCakto(w.id, event('diagnostics'));
+  const [job] = await query(
+    "UPDATE jobs SET status='failed',attempts=10 WHERE workspace_id=$1 RETURNING id,payload",
+    [w.id],
+  );
+  await assert.rejects(() => retryJob(other.id, job.id), /não encontrado/);
+  await retryJob(w.id, job.id);
+  const [retried] = await query('SELECT payload,status,attempts FROM jobs WHERE id=$1', [job.id]);
+  assert.deepEqual(retried.payload, job.payload);
+  assert.equal(retried.attempts, 0);
+  assert.equal(retried.status, 'pending');
+  await assert.rejects(() => retryJob(w.id, job.id), /falha definitiva/);
+  const state = await integrationDiagnostics(w.id);
+  assert.equal(state.approvedOrders, 1);
+  assert.equal(state.pendingJobs, 1);
+  assert(state.lastWebhookAt);
+  assert.equal((await integrationDiagnostics(other.id)).approvedOrders, 0);
+  const oldPayload = { ...job.payload, event_time: Math.floor(Date.now() / 1000) - 8 * 86400 };
+  await query("UPDATE jobs SET status='failed',payload=$2 WHERE id=$1", [
+    job.id,
+    JSON.stringify(oldPayload),
+  ]);
+  await assert.rejects(() => retryJob(w.id, job.id), /expirado/);
+});
+
 const base = process.env.TEST_BASE_URL;
 test(
   'HTTP: sessions, CSRF, webhook authentication, CORS and tenant boundaries',
@@ -526,12 +560,19 @@ test(
     assert.equal((await call('/api/auth/login', { email, password })).status, 200);
     const save = await call(
       '/api/integrations',
-      { caktoSecret: secret, allowedOrigins: ['https://store.example'] },
+      { caktoSecret: secret, allowedOrigins: ['store.example/', 'https://store.example'] },
       cookie,
     );
     assert.equal(save.status, 200);
     const integration = await (await call('/api/integrations', undefined, cookie)).json();
     assert(!JSON.stringify(integration).includes(secret));
+    assert.deepEqual(integration.allowedOrigins, ['https://store.example']);
+    assert.equal(integration.diagnostics.pageviews, 0);
+    assert.equal(
+      (await call('/api/integrations', { allowedOrigins: ['https://store.example/path'] }, cookie))
+        .status,
+      400,
+    );
     const [httpWorkspace] = await query('SELECT id FROM workspaces WHERE user_id=$1', [u.id]);
     // The web route must not decrypt tokens or run Graph work: even this opaque token can enqueue.
     await query(
@@ -637,6 +678,39 @@ test(
       ).status,
       400,
     );
+    const checkoutEvent = {
+      ...pixel,
+      event: 'InitiateCheckout',
+      eventId: crypto.randomUUID(),
+      fbp: 'fb.1.1234567890123.12345',
+    };
+    assert.equal(
+      (await call('/api/tracking', checkoutEvent, undefined, 'https://store.example')).status,
+      200,
+    );
+    assert.equal(
+      (await call('/api/tracking', checkoutEvent, undefined, 'https://store.example')).status,
+      200,
+    );
+    const diagnostic = await (await call('/api/integrations', undefined, cookie)).json();
+    assert.equal(diagnostic.diagnostics.pageviews, 1);
+    assert.equal(diagnostic.diagnostics.checkouts, 1);
+    assert.equal(diagnostic.diagnostics.approvedOrders, 1);
+    assert(diagnostic.diagnostics.lastWebhookAt);
+    assert.equal(diagnostic.diagnostics.acceptedCapi, 0);
+    const [failedJob] = await query(
+      "UPDATE jobs SET status='failed' WHERE workspace_id=$1 AND kind='capi' RETURNING id,payload",
+      [httpWorkspace.id],
+    );
+    const retryPath = `/api/jobs/${failedJob.id}/retry`;
+    assert.equal((await call(retryPath, {}, cookie, 'https://evil.example')).status, 403);
+    assert.equal((await call(retryPath, {}, cookie)).status, 200);
+    assert.equal((await call(retryPath, {}, cookie)).status, 409);
+    const [retriedJob] = await query('SELECT payload,status,attempts FROM jobs WHERE id=$1', [
+      failedJob.id,
+    ]);
+    assert.equal(retriedJob.status, 'pending');
+    assert.deepEqual(retriedJob.payload, failedJob.payload);
     const [click] = await query('SELECT landing_url FROM clicks WHERE id=$1', [clickId]);
     assert.equal(click.landing_url, 'https://store.example/offer');
     assert.equal((await call('/api/jobs', {})).status, 401);

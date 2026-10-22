@@ -89,6 +89,12 @@ tests/browser/                    # Navegação e responsividade Playwright
 
 Os adaptadores de anúncios (`meta.ts`) e vendas (`cakto.ts`/`orders.ts`) são separados. A tabela `orders` possui `provider` e a fila possui `kind`; novos provedores devem implementar seus contratos próprios, autorização e matching sem reutilizar formatos da Meta por suposição.
 
+## Ativar e diagnosticar a operação
+
+Siga [docs/ativacao.md](docs/ativacao.md). Em Integrações, o bloco **Diagnóstico das integrações** mostra eventos recebidos, último webhook aceito, fila pendente/atrasada e aceites CAPI por workspace. Um token cadastrado não comprova entrega à Meta. Origens podem ser coladas sem `https://` ou com barra final; são normalizadas, sem aceitar caminhos, parâmetros, credenciais ou curingas.
+
+Em Rastreamento, **Reagendar** recoloca um trabalho com falha definitiva na fila, com autenticação, origem validada, isolamento do workspace e auditoria. Preserva payload, data e event_id; conversões expiradas há 7 dias ou sem payload não são reenviadas. O processador precisa estar ativo.
+
 ## Homologar Meta, Cakto e pixel
 
 Veja [docs/integrations.md](docs/integrations.md) para callback, escopos, eventos, payload aceito, exemplos de pixel, política de deduplicação e roteiro completo. As rotas são reais; os provedores externos **não foram homologados com credenciais de cliente neste ambiente**. Os testes locais validam o contrato implementado, não substituem uma venda real e um Test Event aceito pela Meta. A documentação externa da Cakto não estava acessível pela política de rede desta sessão; confirme o payload efetivo da sua conta antes de habilitar tráfego pago.

@@ -80,6 +80,19 @@ test('a real account starts empty, persists workspace costs and can sign out', a
     await page.reload();
     await expect(page.getByLabel('Nome do workspace')).toHaveValue('Operação de teste');
     await expect(page.getByLabel('Impostos sobre vendas (%)')).toHaveValue('6');
+    await page.locator('nav').getByRole('button', { name: 'Integrações' }).click();
+    await page
+      .getByLabel('Domínios permitidos do pixel')
+      .fill('mundocriativo.joaolucasqueirozag.workers.dev/');
+    await page.getByRole('button', { name: 'Salvar configurações' }).click();
+    await expect(page.getByRole('status')).toContainText('Configuração salva');
+    await expect(page.getByLabel('Domínios permitidos do pixel')).toHaveValue(
+      'https://mundocriativo.joaolucasqueirozag.workers.dev',
+    );
+    const diagnostics = page.getByRole('region', { name: 'Diagnóstico das integrações' });
+    await expect(diagnostics).toBeVisible();
+    await expect(diagnostics).toContainText('Ainda não registrado');
+    await expect(diagnostics).toContainText('Pendente: configure Pixel e token CAPI.');
     await page.getByRole('button', { name: 'Sair', exact: true }).click();
     await expect(page.getByText('DEMONSTRAÇÃO', { exact: true })).toBeVisible();
   } finally {

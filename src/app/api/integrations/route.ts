@@ -4,6 +4,8 @@ import { requireWorkspace } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { encrypt, appUrl, randomToken } from '@/lib/security';
 import { sameOrigin, readJson, handleError } from '@/lib/http';
+import { trackingOrigins } from '@/lib/tracking-origins';
+import { integrationDiagnostics } from '@/lib/integration-diagnostics';
 export async function GET() {
   try {
     const w = await requireWorkspace();
@@ -16,7 +18,7 @@ export async function GET() {
       [w.id],
     );
     const jobs = await query(
-      'SELECT kind,status,attempts,last_error,created_at FROM jobs WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 20',
+      'SELECT id,kind,status,attempts,last_error,created_at FROM jobs WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 20',
       [w.id],
     );
     return NextResponse.json({
@@ -32,6 +34,7 @@ export async function GET() {
       pixelId: w.pixel_id,
       capiConfigured: !!w.capi_token,
       testEventCode: w.test_event_code,
+      diagnostics: await integrationDiagnostics(w.id),
     });
   } catch (e) {
     return handleError(e);
@@ -46,23 +49,7 @@ const schema = z.object({
     .optional(),
   capiToken: z.string().min(20).max(4096).optional(),
   testEventCode: z.string().max(100).optional(),
-  allowedOrigins: z
-    .array(
-      z.url().refine((u) => {
-        try {
-          const x = new URL(u);
-          return (
-            x.origin === u &&
-            (x.protocol === 'https:' ||
-              (x.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(x.hostname)))
-          );
-        } catch {
-          return false;
-        }
-      }, 'Use uma origem HTTPS sem caminho.'),
-    )
-    .max(20)
-    .optional(),
+  allowedOrigins: trackingOrigins.optional(),
   generateSecret: z.boolean().optional(),
 });
 export async function POST(request: Request) {
