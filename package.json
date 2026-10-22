@@ -18,7 +18,8 @@
     "build:cloudflare": "opennextjs-cloudflare build",
     "preview:cloudflare": "opennextjs-cloudflare preview",
     "deploy:cloudflare": "opennextjs-cloudflare deploy",
-    "test:cloudflare": "tsx --test tests/cloudflare-runtime.test.ts"
+    "test:cloudflare": "tsx --test tests/cloudflare-runtime.test.ts",
+    "processor:http": "tsx scripts/processor-http.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.3.1",

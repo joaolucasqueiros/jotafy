@@ -1,0 +1,27 @@
+# Optional HTTP processor. Select this file when creating a Blueprint.
+# The existing render.yaml configures a paid Background Worker instead.
+services:
+  - type: web
+    name: metatrack-processor-free
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci --omit=dev --no-audit --no-fund
+    startCommand: npm run processor:http
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '24'
+      - key: META_GRAPH_VERSION
+        value: v25.0
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
