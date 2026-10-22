@@ -159,3 +159,7 @@ Em Rastreamento, o bloco **Testar envio ao Facebook** enfileira PageView, ViewCo
 A rota autenticada `/api/tracking/test` não chama a Meta na Cloudflare: o processador Node executa `capi_test`. Uma resposta `events_received: 1` é persistida em auditoria com o fbtrace_id retornado, sem tokens. A tela distingue recebido, pendente, enviado e aceito. Sem processador ativo, o teste permanece pendente. Um teste nunca cria `orders`, `clicks` ou `tracking_events`, e não altera o funil, receita ou o total de CAPI real. Não há migração nova.
 
 O bloco **Eventos recebidos da página** mostra os últimos 20 eventos reais do workspace com URL, horário, eventID e estado do job de entrega. Confira PageView após abrir a página; a simulação isolada valida CAPI, enquanto esse monitor valida a chegada do script. A consulta atualiza a cada 15 segundos com a aba visível e pode ser atualizada manualmente. Os testes automatizados usam Meta simulada e banco isolado, sem enviar conversões para produção.
+
+## Entrega do ebook Mundo Criativo
+
+Pedidos aprovados do Pequenos Construtores podem gerar um link individual em Vendas → detalhes do pedido → Gerar link do material. A autorização consulta o pagamento real e revoga novos downloads após reembolso. A ativação exige a migration `006`, um segredo de serviço entre os dois Workers e R2 privado na loja. Veja [docs/entrega-mundo-criativo.md](docs/entrega-mundo-criativo.md). O repasse automático da identificação do comprador pela Cakto ainda precisa de confirmação; a URL genérica de obrigado não autoriza o PDF.

@@ -216,6 +216,11 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
   const [integration, setIntegration] = useState<Integration | null>(null),
     [entityLevel, setEntityLevel] = useState<'campaign' | 'adset' | 'ad'>('campaign'),
     [entities, setEntities] = useState<Campaign[]>([]);
+  const [deliveryLink, setDeliveryLink] = useState('');
+  const [deliveryBusy, setDeliveryBusy] = useState(false);
+  useEffect(() => {
+    setDeliveryLink('');
+  }, [selectedSale?.id]);
   const demo = initial.demo;
   const filterStorageKey = `metatrack:dashboard-filters:v1:${initial.workspaceId || 'demo'}`;
   const [loadedFilterKey, setLoadedFilterKey] = useState<string | null>(null);
@@ -1844,6 +1849,47 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
             <ShieldCheck size={16} />
             <p>Compra confirmada via webhook da Cakto.{demo ? ' Exemplo ilustrativo.' : ''}</p>
           </div>
+          {!demo &&
+            selectedSale.status === 'approved' &&
+            selectedSale.product.includes('Pequenos Construtores') && (
+              <div className="delivery-access-controls">
+                <Button
+                  disabled={deliveryBusy}
+                  onClick={async () => {
+                    setDeliveryBusy(true);
+                    try {
+                      const result = await api(
+                        `/api/orders/${encodeURIComponent(selectedSale.id)}/access`,
+                        {},
+                      );
+                      setDeliveryLink(result.url);
+                    } catch (error) {
+                      notify((error as Error).message);
+                    } finally {
+                      setDeliveryBusy(false);
+                    }
+                  }}
+                >
+                  {deliveryBusy ? 'Gerando acesso…' : 'Gerar link do material'}
+                </Button>
+                {deliveryLink && (
+                  <>
+                    <label className="form-label">
+                      Link individual do comprador
+                      <input readOnly value={deliveryLink} />
+                    </label>
+                    <p className="field-hint">
+                      Válido por 24 horas para o primeiro acesso. Envie somente ao comprador. Depois
+                      de aberto, o acesso fica salvo naquele navegador por 30 dias.
+                    </p>
+                    <Button variant="outline" onClick={() => copy(deliveryLink)}>
+                      <Copy size={15} />
+                      Copiar link de acesso
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
         </Modal>
       )}
     </div>

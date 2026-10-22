@@ -12,6 +12,7 @@
     "worker": "tsx scripts/worker.ts",
     "worker:once": "tsx scripts/worker.ts --once",
     "test:integration": "tsx --test tests/integration.test.ts",
+    "test:delivery": "tsx --test tests/delivery.integration.test.ts",
     "test:e2e": "playwright test",
     "format": "prettier --write src scripts tests db README.md docs *.json *.ts *.mjs *.yaml",
     "format:check": "prettier --check src scripts tests README.md docs *.json *.ts *.mjs *.yaml",

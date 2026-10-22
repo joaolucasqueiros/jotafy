@@ -168,6 +168,11 @@ export async function runJobs(
   return { completed, failed };
 }
 export async function cleanup() {
+  const [delivery] = await query("SELECT to_regclass('delivery_access') AS table_name");
+  if (delivery?.table_name)
+    await query(
+      "DELETE FROM delivery_access WHERE COALESCE(session_expires_at,grant_expires_at)<now()-interval '7 days'",
+    );
   await query('DELETE FROM sessions WHERE expires_at<now()');
   await query('DELETE FROM rate_limits WHERE expires_at<now()');
   await query("DELETE FROM clicks WHERE created_at<now()-interval '90 days'");

@@ -3674,3 +3674,11 @@ td small {
   width: auto;
   margin-top: 3px;
 }
+.delivery-access-controls {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.delivery-access-controls input {
+  width: 100%;
+}
