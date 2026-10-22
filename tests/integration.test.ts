@@ -567,6 +567,23 @@ test(
     const integration = await (await call('/api/integrations', undefined, cookie)).json();
     assert(!JSON.stringify(integration).includes(secret));
     assert.deepEqual(integration.allowedOrigins, ['https://store.example']);
+    const capiToken = 'qa-capi-token-' + 'x'.repeat(4000);
+    const savePixel = await call(
+      '/api/integrations',
+      { pixelId: '1309619167932261', capiToken },
+      cookie,
+    );
+    assert.equal(savePixel.status, 200);
+    const configured = await (await call('/api/integrations', undefined, cookie)).json();
+    assert.equal(configured.pixelId, '1309619167932261');
+    assert.equal(configured.capiConfigured, true);
+    assert(!JSON.stringify(configured).includes(capiToken));
+    const [savedWorkspace] = await query('SELECT capi_token FROM workspaces WHERE user_id=$1', [
+      u.id,
+    ]);
+    const { decrypt } = await import('../src/lib/security');
+    assert.equal(decrypt(savedWorkspace.capi_token), capiToken);
+    assert.notEqual(savedWorkspace.capi_token, capiToken);
     assert.equal(integration.diagnostics.pageviews, 0);
     assert.equal(
       (await call('/api/integrations', { allowedOrigins: ['https://store.example/path'] }, cookie))

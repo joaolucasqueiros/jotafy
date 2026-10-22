@@ -93,6 +93,28 @@ test('a real account starts empty, persists workspace costs and can sign out', a
     await expect(diagnostics).toBeVisible();
     await expect(diagnostics).toContainText('Ainda não registrado');
     await expect(diagnostics).toContainText('Pendente: configure Pixel e token CAPI.');
+    // Saving can succeed even when the following GET is rejected by Cloudflare.
+    await page.route('**/api/integrations', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'text/html',
+          body: '<h2>Worker exceeded resource limits</h2>',
+        });
+      } else await route.continue();
+    });
+    await page.getByLabel('ID do Pixel / Dataset').fill('1309619167932261');
+    await page.getByLabel('Token da Conversions API').fill('qa-only-capi-token-123456789');
+    await page.getByRole('button', { name: 'Salvar configurações' }).click();
+    await expect(page.getByRole('status')).toContainText('As configurações foram salvas');
+    await expect(page.getByRole('status')).toContainText('GET /api/integrations');
+    await page.unroute('**/api/integrations');
+    await page.reload();
+    await expect(page.getByLabel('ID do Pixel / Dataset')).toHaveValue('1309619167932261');
+    await expect(page.getByLabel('Token da Conversions API')).toHaveAttribute(
+      'placeholder',
+      'Configurado · digite somente para substituir',
+    );
     await page.getByRole('button', { name: 'Sair', exact: true }).click();
     await expect(page.getByText('DEMONSTRAÇÃO', { exact: true })).toBeVisible();
   } finally {

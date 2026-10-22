@@ -14,6 +14,20 @@ test('Cloudflare HTML resource errors produce an actionable message instead of a
   );
   try {
     await assert.rejects(() => api('/api/meta/sync', {}), /limite de recursos \(1102\)/);
+    await assert.rejects(
+      () => api('/api/meta/sync?jobId=private-query'),
+      (error: Error) =>
+        error.message.includes('GET /api/meta/sync') &&
+        error.message.includes('processador Node/GitHub Actions') &&
+        !error.message.includes('private-query'),
+    );
+    await assert.rejects(
+      () => api('/api/integrations', {}),
+      (error: Error) =>
+        error.message.includes('POST /api/integrations') &&
+        error.message.includes('logs dessa rota') &&
+        !error.message.includes('deve ser executado pelo serviço Node'),
+    );
   } finally {
     fetchMock.mock.restore();
   }

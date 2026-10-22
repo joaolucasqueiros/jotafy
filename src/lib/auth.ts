@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
-import { query } from './db';
+import { query, withConnection } from './db';
 import { sha256, randomToken, HttpError } from './security';
+import type { PoolClient } from 'pg';
 export const sessionCookie = 'mt_session';
 export type Workspace = {
   id: string;
@@ -16,21 +17,30 @@ export type Workspace = {
   capi_token: string | null;
   test_event_code: string | null;
 };
-export async function currentWorkspace(): Promise<Workspace | null> {
+export async function currentWorkspace(client?: PoolClient): Promise<Workspace | null> {
   const token = (await cookies()).get(sessionCookie)?.value;
   if (!token) return null;
-  const [row] = await query<Workspace>(
-    `SELECT w.*, u.name AS user_name, u.email FROM sessions s
+  const sql = `SELECT w.*, u.name AS user_name, u.email FROM sessions s
  JOIN users u ON u.id=s.user_id JOIN workspaces w ON w.user_id=u.id
- WHERE s.token_hash=$1 AND s.expires_at > now()`,
-    [sha256(token)],
-  );
+ WHERE s.token_hash=$1 AND s.expires_at > now()`;
+  const params = [sha256(token)];
+  const [row] = client
+    ? (await client.query<Workspace>(sql, params)).rows
+    : await query<Workspace>(sql, params);
   return row || null;
 }
-export async function requireWorkspace() {
-  const w = await currentWorkspace();
+export async function requireWorkspace(client?: PoolClient) {
+  const w = await currentWorkspace(client);
   if (!w) throw new HttpError(401, 'Entre na sua conta para continuar.');
   return w;
+}
+export async function withWorkspace<T>(
+  fn: (workspace: Workspace, client: PoolClient) => Promise<T>,
+) {
+  // Reject anonymous requests before opening a database socket.
+  if (!(await cookies()).get(sessionCookie)?.value)
+    throw new HttpError(401, 'Entre na sua conta para continuar.');
+  return withConnection(async (client) => fn(await requireWorkspace(client), client));
 }
 export async function createSession(userId: string) {
   const token = randomToken();

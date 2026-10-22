@@ -23,6 +23,22 @@ function createPool() {
 export const db = globalDb.db ?? createPool();
 if (process.env.NODE_ENV !== 'production') globalDb.db = db;
 
+// Reuse one connection inside an HTTP operation, then dispose it before the
+// Workers request ends. Never retain a Workers TCP socket across requests.
+export async function withConnection<T>(fn: (client: PoolClient) => Promise<T>) {
+  const pool = isWorkersRuntime() ? createPool() : db;
+  const client = await pool.connect().catch(async (error: unknown) => {
+    if (pool !== db) await pool.end();
+    throw error;
+  });
+  try {
+    return await fn(client);
+  } finally {
+    client.release();
+    if (pool !== db) await pool.end();
+  }
+}
+
 export async function query<T extends QueryResultRow = QueryResultRow>(
   sql: string,
   params: unknown[] = [],

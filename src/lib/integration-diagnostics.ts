@@ -1,4 +1,5 @@
 import { query } from './db';
+import type { PoolClient } from 'pg';
 
 export type IntegrationDiagnostics = {
   pageviews: number;
@@ -14,21 +15,27 @@ export type IntegrationDiagnostics = {
   lastCapiAt: string | null;
 };
 
-export async function integrationDiagnostics(workspaceId: string): Promise<IntegrationDiagnostics> {
+export async function integrationDiagnostics(
+  workspaceId: string,
+  client?: PoolClient,
+): Promise<IntegrationDiagnostics> {
+  const execute = client
+    ? async (sql: string, params: unknown[]) => (await client.query(sql, params)).rows
+    : query;
   const [[tracking], [sales], [jobs]] = await Promise.all([
-    query(
+    execute(
       `SELECT count(*) FILTER (WHERE event_name='PageView')::int AS pageviews,
       count(*) FILTER (WHERE event_name='InitiateCheckout')::int AS checkouts,
       max(created_at) AS last_tracking_at FROM tracking_events
       WHERE workspace_id=$1 AND created_at>=now()-interval '7 days'`,
       [workspaceId],
     ),
-    query(
+    execute(
       `SELECT (SELECT max(received_at) FROM webhook_receipts WHERE workspace_id=$1) AS last_webhook_at,
       (SELECT count(*)::int FROM orders WHERE workspace_id=$1 AND status='approved') AS approved_orders`,
       [workspaceId],
     ),
-    query(
+    execute(
       `SELECT count(*) FILTER (WHERE status IN ('pending','running'))::int AS pending_jobs,
       count(*) FILTER (WHERE (status='pending' AND run_at<now()-interval '30 minutes') OR
         (status='running' AND locked_until<now()-interval '30 minutes'))::int AS delayed_jobs,

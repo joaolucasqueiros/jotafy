@@ -66,3 +66,11 @@ A rota `/api/auth/meta` valida as configurações antes de consultar a sessão e
 `ENCRYPTION_KEY_INVALID` exige restaurar a chave original de 32 bytes em base64. Não gere outra chave se já há tokens de integrações armazenados. O cadastro por senha pode funcionar mesmo quando essa chave ainda está ausente, porque somente o fluxo de integrações usa criptografia de tokens/estado.
 
 Se um erro inesperado persistir, a resposta inclui `operation`, `stage` e `requestId`. Em Observability, procure esse requestId. `session_lookup` indica a consulta de sessão no banco; `state_cookie` identifica a criação do estado criptografado/cookie; `redirect` identifica a construção da resposta de redirecionamento. Os logs registram somente etapa, nome e código técnico do erro, sem corpo, senha, token, URL de conexão ou mensagem bruta do provedor. Um callback validado no painel Meta não comprova a disponibilidade dessas configurações no Worker.
+
+## Erro 1102 ao salvar Pixel/token
+
+Esse erro é da requisição web, não prova falha do processador Node. O cliente identifica método e rota sem expor parâmetros: `POST /api/integrations` é o salvamento; `GET /api/integrations` é a leitura da configuração. Se a gravação conclui e só a leitura posterior falha, a interface informa que as configurações foram salvas e não pede para gerar outro token.
+
+GET e POST de Integrações compartilham uma conexão PostgreSQL por requisição entre a autenticação e as consultas; a conexão é encerrada antes do retorno no Workers. Não há socket global reutilizado entre requisições. Isso evita repetir os handshakes de conexão/autenticação a cada consulta. A rota não consulta Graph, não envia CAPI nem processa jobs ao salvar.
+
+Publique a versão atual de `main`, recarregue o painel e repita o salvamento. Se o 1102 continuar, confira a rota na mensagem e os registros CPU/memória em Observability da Cloudflare para essa requisição. O teste local não reproduz os limites e a carga do plano de produção; confirme se o problema é CPU, memória ou versão antiga antes de alterar limites ou hospedagem.

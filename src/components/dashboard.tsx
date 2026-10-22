@@ -336,12 +336,12 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     adset,
     ad,
   ]);
-  async function loadIntegration() {
+  async function loadIntegration(errorContext?: string) {
     if (demo) return;
     try {
       setIntegration(await api('/api/integrations'));
     } catch (e) {
-      notify((e as Error).message);
+      notify(`${errorContext ? `${errorContext} ` : ''}${(e as Error).message}`);
     }
   }
   useEffect(() => {
@@ -1981,7 +1981,7 @@ function Integrations({
   demo: boolean;
   integration: Integration | null;
   notify: (s: string) => void;
-  reload: () => Promise<void>;
+  reload: (errorContext?: string) => Promise<void>;
   copy: (s: string) => Promise<void>;
 }) {
   const [secret, setSecret] = useState(''),
@@ -2022,7 +2022,7 @@ function Integrations({
       setSecret('');
       setToken('');
       notify('Configuração salva. Segredos armazenados com criptografia.');
-      await reload();
+      await reload('As configurações foram salvas, mas não foi possível recarregar a tela.');
     } catch (e) {
       notify((e as Error).message);
     } finally {
