@@ -1,17 +1,18 @@
+import { HttpError } from './security';
 import { transaction } from './db';
 import { canTransition, normalizeCakto } from './cakto';
 export async function ingestCakto(
   workspaceId: string,
   event: NonNullable<ReturnType<typeof normalizeCakto>>,
 ) {
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     // Serialize lifecycle changes for the same order, including its first insert.
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
       `${workspaceId}:${event.externalId}`,
     ]);
     const receipt = await client.query(
-      'INSERT INTO webhook_receipts(workspace_id,event_key,event_name) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING event_key',
-      [workspaceId, event.eventKey, event.eventName],
+      "INSERT INTO webhook_receipts(workspace_id,event_key,event_name,external_order_id,occurred_at,processing_status) VALUES($1,$2,$3,$4,$5,'received') ON CONFLICT DO NOTHING RETURNING event_key",
+      [workspaceId, event.eventKey, event.eventName, event.externalId, event.occurredAt],
     );
     if (!receipt.rowCount) return { duplicate: true };
     const {
@@ -20,13 +21,20 @@ export async function ingestCakto(
       'SELECT * FROM orders WHERE workspace_id=$1 AND provider=$2 AND external_id=$3',
       [workspaceId, 'cakto', event.externalId],
     );
+    if (previous && previous.is_test !== event.isTest)
+      throw new HttpError(409, 'Pedido já registrado em outro modo (teste/produção).');
     if (
       previous &&
       (!canTransition(previous.status, event.status) ||
         (!['refunded', 'chargeback'].includes(event.status) &&
           new Date(previous.occurred_at) > event.occurredAt))
-    )
-      return { ignored: true };
+    ) {
+      await client.query(
+        "UPDATE webhook_receipts SET processing_status='ignored',reason='lifecycle_or_stale' WHERE workspace_id=$1 AND event_key=$2",
+        [workspaceId, event.eventKey],
+      );
+      return { ignored: true, reason: 'lifecycle_or_stale' };
+    }
     const {
       rows: [click],
     } = event.clickId
@@ -75,8 +83,8 @@ export async function ingestCakto(
     campaignId = campaign?.external_id || null;
     const attribution = campaignId ? (click ? 'click' : 'utm') : 'unattributed';
     await client.query(
-      `INSERT INTO orders(workspace_id,external_id,status,amount,currency,product,customer_hash,campaign_id,adset_id,ad_id,click_id,attribution,payment_method,occurred_at,purchased_at,provider_fees,commission_breakdown)
-  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      `INSERT INTO orders(workspace_id,external_id,status,amount,currency,product,customer_hash,campaign_id,adset_id,ad_id,click_id,attribution,payment_method,occurred_at,purchased_at,provider_fees,commission_breakdown,is_test)
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
   ON CONFLICT(workspace_id,provider,external_id) DO UPDATE SET status=$3,amount=$4,product=$6,customer_hash=COALESCE($7,orders.customer_hash),campaign_id=COALESCE($8,orders.campaign_id),adset_id=COALESCE($9,orders.adset_id),ad_id=COALESCE($10,orders.ad_id),click_id=COALESCE($11,orders.click_id),attribution=CASE WHEN $8 IS NOT NULL THEN $12 ELSE orders.attribution END,occurred_at=$14,purchased_at=COALESCE(orders.purchased_at,$15),provider_fees=COALESCE($16,orders.provider_fees),commission_breakdown=COALESCE($17,orders.commission_breakdown),updated_at=now()`,
       [
         workspaceId,
@@ -93,22 +101,32 @@ export async function ingestCakto(
         attribution,
         event.paymentMethod,
         event.occurredAt,
-        event.status === 'approved' ? event.occurredAt : null,
+        event.purchasedAt,
         event.providerFees,
         event.commissions ? JSON.stringify(event.commissions) : null,
+        event.isTest,
       ],
     );
+    await client.query(
+      "UPDATE webhook_receipts SET processing_status='accepted' WHERE workspace_id=$1 AND event_key=$2",
+      [workspaceId, event.eventKey],
+    );
     if (event.status === 'approved' && previous?.status !== 'approved') {
+      const {
+        rows: [configuration],
+      } = await client.query('SELECT test_event_code FROM workspaces WHERE id=$1', [workspaceId]);
+      if (event.isTest && !configuration.test_event_code)
+        return { accepted: true, attribution, capi: 'skipped_test' };
       const eventId = `cakto:${event.externalId}:purchase`;
       await client.query(
-        `INSERT INTO jobs(workspace_id,kind,dedupe_key,payload) VALUES($1,'capi',$2,$3) ON CONFLICT DO NOTHING`,
+        `INSERT INTO jobs(workspace_id,kind,dedupe_key,payload,is_test,test_event_code) VALUES($1,'capi',$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
         [
           workspaceId,
           eventId,
           JSON.stringify({
             event_name: 'Purchase',
             event_id: eventId,
-            event_time: Math.floor(event.occurredAt.getTime() / 1000),
+            event_time: Math.floor((event.purchasedAt || event.occurredAt).getTime() / 1000),
             action_source: 'website',
             event_source_url: click?.landing_url,
             user_data: {
@@ -123,9 +141,25 @@ export async function ingestCakto(
               order_id: event.externalId,
             },
           }),
+          event.isTest,
+          event.isTest ? configuration.test_event_code : '',
         ],
       );
     }
     return { accepted: true, attribution };
   });
+  console.info(
+    JSON.stringify({
+      operation: 'cakto_ingest',
+      workspaceId,
+      eventId: event.eventKey,
+      eventName: event.eventName,
+      source: 'cakto',
+      occurredAt: event.occurredAt.toISOString(),
+      receivedAt: new Date().toISOString(),
+      isTest: event.isTest,
+      ...result,
+    }),
+  );
+  return result;
 }

@@ -193,3 +193,19 @@ Uma resposta 202 significa trabalho pendente, não sucesso de importação. Ela
 inclui `jobId` e `lockedUntil`. A tela verifica o estado a cada 30 segundos; o worker é responsável pela retomada e pelas tentativas. Bloqueios já criados pela
 versão antiga continuam válidos até seu vencimento original de 20 minutos; não
 são cancelados à força durante a atualização. Reinicie workers antigos ao publicar.
+
+## Auditoria e identidade dos eventos
+
+Veja [o relatório de auditoria de 23/10/2026](auditoria-eventos-2026-10-23.md) para fontes, sessões, teste, fuso, atribuição e o endpoint autenticado `/api/events/audit`.
+
+O MetaTrack não instala automaticamente o Pixel Meta `fbq`. Se a mesma ação for enviada por ambos, gere um ID uma vez e use-o nos dois envios para o **mesmo Pixel/Dataset**, sem repetir isso em outros listeners:
+
+```js
+const eventId = crypto.randomUUID(); // uma vez por ação; reutilizar no retry dessa ação
+MetaTrack.track('InitiateCheckout', { eventId });
+fbq('trackSingle', 'ID_DO_MESMO_PIXEL', 'InitiateCheckout', {}, { eventID: eventId });
+```
+
+Isso preserva a identidade usada no job CAPI; conferir a deduplicação real nos Eventos de Teste Meta. Uma tentativa legítima posterior recebe outro ID. Se a integração da Cakto já emite Purchase com ID próprio, não presumir deduplicação com `cakto:<pedido>:purchase`: escolher um emissor ou homologar identidade compartilhada. Não disparar Purchase apenas por entrar no checkout.
+
+O pixel aceita `MetaTrack.init({ key: 'CHAVE_PUBLICA', consent: true, isTest: true })`. Sem código CAPI de teste, esses eventos ficam somente no diagnóstico interno. Para produção, remova o código de teste do workspace e o `isTest:true`. Eventos históricos sem marcação não são excluídos automaticamente.

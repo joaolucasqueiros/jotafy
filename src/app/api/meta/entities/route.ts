@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         values,
       ),
       query(
-        `SELECT ${field} AS id,count(*)::int AS sales,sum(amount)::float8 AS revenue FROM orders WHERE workspace_id=$1 AND status='approved' AND (COALESCE(purchased_at,occurred_at) AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR campaign_id=$4) GROUP BY ${field}`,
+        `SELECT ${field} AS id,count(*)::int AS sales,sum(amount)::float8 AS revenue FROM orders WHERE workspace_id=$1 AND is_test=false AND status='approved' AND (COALESCE(purchased_at,occurred_at) AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR campaign_id=$4) GROUP BY ${field}`,
         values,
       ),
     ]);

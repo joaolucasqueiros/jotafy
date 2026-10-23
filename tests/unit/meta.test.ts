@@ -65,3 +65,16 @@ test('Graph provider errors fail explicitly', async () => {
     fn.mock.restore();
   }
 });
+
+test('Graph HTML error cannot produce false successful metrics', async () => {
+  const fn = mock.method(
+    globalThis,
+    'fetch',
+    async () => new Response('<!DOCTYPE html>upstream unavailable', { status: 502 }),
+  );
+  try {
+    await assert.rejects(() => graphRequest('me', 'token-test'), /resposta não JSON/);
+  } finally {
+    fn.mock.restore();
+  }
+});

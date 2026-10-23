@@ -43,6 +43,14 @@ export type Financials = {
   expenses: number;
 };
 export type DashboardData = {
+  eventMetrics?: {
+    name: string;
+    rawEvents: number;
+    uniqueSessions: number;
+    eventsWithoutSession: number;
+    attributedEvents: number;
+    uniqueUsers: null;
+  }[];
   workspaceId?: string;
   financials?: Financials;
   demo: boolean;

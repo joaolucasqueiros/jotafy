@@ -96,12 +96,17 @@ export async function runJobs(
           throw new Error(
             'Evento website sem URL ou user agent do clique; preserve mt_click no checkout.',
           );
+        // Null marks legacy jobs: preserve their previous workspace test-code routing.
+        // New production jobs store an empty string, so later settings changes cannot reroute them.
+        const testEventCode = job.test_event_code ?? w.test_event_code;
+        if (job.is_test && !testEventCode)
+          throw new Error('Evento de teste sem código CAPI; envio bloqueado.');
         const result = await graphRequest<{ events_received: number }>(
           `${w.pixel_id}/events`,
           decrypt(w.capi_token),
           {
             data: JSON.stringify([job.payload]),
-            ...(w.test_event_code ? { test_event_code: w.test_event_code } : {}),
+            ...(testEventCode ? { test_event_code: testEventCode } : {}),
           },
           'POST',
         );
@@ -113,6 +118,17 @@ export async function runJobs(
         [job.id, job.attempts + 1],
       );
       if (!done.length) throw new Error('A execução perdeu o bloqueio antes da conclusão.');
+      console.info(
+        JSON.stringify({
+          operation: 'job_processed',
+          jobId: job.id,
+          workspaceId: job.workspace_id,
+          kind: job.kind,
+          eventId: job.payload.event_id || null,
+          status: 'completed',
+          attempt: job.attempts + 1,
+        }),
+      );
       completed++;
     } catch (error) {
       const attempts = job.attempts + 1;
@@ -129,6 +145,17 @@ export async function runJobs(
           Math.min(21600, 30 * 2 ** attempts),
           attempts,
         ],
+      );
+      console.info(
+        JSON.stringify({
+          operation: 'job_processed',
+          jobId: job.id,
+          workspaceId: job.workspace_id,
+          kind: job.kind,
+          eventId: job.payload.event_id || null,
+          status: attempts >= 10 ? 'failed' : 'retry',
+          attempt: attempts,
+        }),
       );
       failed++;
     }

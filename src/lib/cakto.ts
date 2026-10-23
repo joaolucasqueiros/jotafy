@@ -23,10 +23,12 @@ const utms = z.object({
 });
 export const caktoPayload = z.object({
   secret: z.string().min(1),
+  is_test: z.boolean().optional(),
   event: z.string().min(1),
   id: scalar.optional(),
   data: z.object({
     id: scalar,
+    is_test: z.boolean().optional(),
     status: optString,
     amount: z.union([z.string(), z.number()]),
     currency: z.string().default('BRL'),
@@ -100,6 +102,8 @@ export function normalizeCakto(input: unknown, expectedSecret: string) {
   if (!when || !Number.isFinite(Date.parse(when)))
     throw new HttpError(400, 'Evento sem data válida (updatedAt/approvedDate/createdAt).');
   if (d.currency !== 'BRL') throw new HttpError(422, 'Este workspace aceita vendas em BRL.');
+  if (status === 'approved' && !Number.isFinite(Date.parse(d.paidAt || d.approvedDate || when)))
+    throw new HttpError(400, 'Data de aprovação inválida.');
   const tracking = { ...d, ...d.utm, ...d.tracking };
   function cents(value: string | number) {
     const n = Number(value);
@@ -108,6 +112,8 @@ export function normalizeCakto(input: unknown, expectedSecret: string) {
     return Math.round(n * 100);
   }
   return {
+    isTest: payload.is_test === true || d.is_test === true,
+    purchasedAt: status === 'approved' ? new Date(d.paidAt || d.approvedDate || when) : null,
     providerFees: d.fees == null ? null : cents(d.fees),
     commissions:
       d.commissions?.map((c) => ({

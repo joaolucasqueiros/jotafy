@@ -26,7 +26,14 @@ export async function graphRequest<T = Record<string, unknown>>(
     signal: AbortSignal.timeout(25000),
     cache: 'no-store',
   });
-  const body = await response.json();
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new HttpError(502, 'Meta retornou resposta não JSON; última sincronização preservada.');
+  }
+  if (!body || typeof body !== 'object')
+    throw new HttpError(502, 'Meta retornou resposta inválida.');
   if (!response.ok || body.error)
     throw new HttpError(
       502,
@@ -90,6 +97,7 @@ type MetaAdset = {
   name: string;
   status: string;
   daily_budget?: string;
+  attribution_spec?: { event_type: string; window_days: number }[];
 };
 type MetaAd = { id: string; campaign_id: string; adset_id: string; name: string; status: string };
 type MetaInsight = {
@@ -113,6 +121,8 @@ export async function syncMeta(workspaceId: string, checkpoint?: MetaCheckpoint)
   if (!accounts.length) throw new HttpError(409, 'Selecione pelo menos uma conta de anúncios.');
   const { start, end } = dateRange(90);
   const tick = () => checkpoint?.() || Promise.resolve();
+  if (accounts.some((a) => a.currency !== 'BRL' || a.timezone !== 'America/Sao_Paulo'))
+    throw new HttpError(422, 'Sincronização exige contas BRL no fuso America/Sao_Paulo.');
   for (const account of accounts) {
     // Fetch outside the transaction. Network pagination renews the job's lease.
     const campaigns = await graphAll<MetaCampaign>(
@@ -124,7 +134,7 @@ export async function syncMeta(workspaceId: string, checkpoint?: MetaCheckpoint)
     const adsets = await graphAll<MetaAdset>(
       `${account.external_id}/adsets`,
       token,
-      { fields: 'id,campaign_id,name,status,daily_budget' },
+      { fields: 'id,campaign_id,name,status,daily_budget,attribution_spec' },
       tick,
     );
     const ads = await graphAll<MetaAd>(
@@ -140,6 +150,8 @@ export async function syncMeta(workspaceId: string, checkpoint?: MetaCheckpoint)
         fields: 'ad_id,adset_id,campaign_id,spend,inline_link_clicks,impressions,actions',
         level: 'ad',
         time_increment: '1',
+        action_report_time: 'impression',
+        use_unified_attribution_setting: 'true',
         time_range: JSON.stringify({ since: start, until: end }),
       },
       tick,
@@ -147,6 +159,7 @@ export async function syncMeta(workspaceId: string, checkpoint?: MetaCheckpoint)
     const unique = <T>(rows: T[], key: (row: T) => string) => [
       ...new Map(rows.map((row) => [key(row), row])).values(),
     ];
+    const attributionByAdset = new Map(adsets.map((a) => [a.id, a.attribution_spec || null]));
     const insightRows = unique(insights, (i) => `${i.ad_id}:${i.date_start}`).map((i) => ({
       ad_id: i.ad_id,
       adset_id: i.adset_id,
@@ -156,6 +169,15 @@ export async function syncMeta(workspaceId: string, checkpoint?: MetaCheckpoint)
       clicks: Number(i.inline_link_clicks || 0),
       impressions: Number(i.impressions),
       landing_page_views: landingPageViews(i.actions),
+      raw_actions: i.actions || [],
+      attribution_context: {
+        account_id: account.external_id,
+        timezone: account.timezone,
+        action_report_time: 'impression',
+        use_unified_attribution_setting: true,
+        attribution_spec: attributionByAdset.get(i.adset_id) || null,
+        graph_version: process.env.META_GRAPH_VERSION || 'v25.0',
+      },
     }));
     await transaction(async (client) => {
       // Lock/check the lease in the same transaction as the writes, fencing obsolete attempts.
@@ -199,10 +221,10 @@ export async function syncMeta(workspaceId: string, checkpoint?: MetaCheckpoint)
       for (let offset = 0; offset < insightRows.length; offset += 500) {
         await checkpoint?.(client);
         await client.query(
-          `INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,spend,clicks,impressions,landing_page_views)
-          SELECT $1,i.ad_id,i.adset_id,i.campaign_id,i.day,i.spend,i.clicks,i.impressions,i.landing_page_views
-          FROM jsonb_to_recordset($2::jsonb) AS i(ad_id text,adset_id text,campaign_id text,day date,spend bigint,clicks integer,impressions integer,landing_page_views integer)
-          ON CONFLICT(workspace_id,ad_id,day) DO UPDATE SET spend=EXCLUDED.spend,clicks=EXCLUDED.clicks,impressions=EXCLUDED.impressions,landing_page_views=EXCLUDED.landing_page_views`,
+          `INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,spend,clicks,impressions,landing_page_views,raw_actions,attribution_context,synced_at)
+          SELECT $1,i.ad_id,i.adset_id,i.campaign_id,i.day,i.spend,i.clicks,i.impressions,i.landing_page_views,i.raw_actions,i.attribution_context,now()
+          FROM jsonb_to_recordset($2::jsonb) AS i(ad_id text,adset_id text,campaign_id text,day date,spend bigint,clicks integer,impressions integer,landing_page_views integer,raw_actions jsonb,attribution_context jsonb)
+          ON CONFLICT(workspace_id,ad_id,day) DO UPDATE SET spend=EXCLUDED.spend,clicks=EXCLUDED.clicks,impressions=EXCLUDED.impressions,landing_page_views=EXCLUDED.landing_page_views,raw_actions=EXCLUDED.raw_actions,attribution_context=EXCLUDED.attribution_context,synced_at=EXCLUDED.synced_at`,
           [workspaceId, JSON.stringify(insightRows.slice(offset, offset + 500))],
         );
       }

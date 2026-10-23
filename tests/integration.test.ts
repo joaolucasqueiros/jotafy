@@ -7,6 +7,7 @@ const { db, query } = await import('../src/lib/db');
 const { encrypt, randomToken } = await import('../src/lib/security');
 const { normalizeCakto } = await import('../src/lib/cakto');
 const { ingestCakto } = await import('../src/lib/orders');
+const { ingestTracking } = await import('../src/lib/tracking');
 const { dashboard } = await import('../src/lib/dashboard');
 const { runJobs, renewJobLease } = await import('../src/lib/jobs');
 const { rateLimit } = await import('../src/lib/http');
@@ -52,6 +53,10 @@ function event(id: string, status = 'purchase_approved', extra: Record<string, u
 test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job retries', async (t) => {
   const w = await workspace(),
     other = await workspace();
+  await query(
+    "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_1','Account','BRL','America/Sao_Paulo',true)",
+    [w.id],
+  );
   await query(
     "INSERT INTO campaigns(workspace_id,account_id,external_id,name,status) VALUES($1,'act_1','100','Campaign','ACTIVE')",
     [w.id],
@@ -243,6 +248,8 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
         assert(url.pathname.endsWith('/insights'));
         assert(url.searchParams.get('fields')!.includes('inline_link_clicks'));
         assert(url.searchParams.get('fields')!.includes('actions'));
+        assert.equal(url.searchParams.get('action_report_time'), 'impression');
+        assert.equal(url.searchParams.get('use_unified_attribution_setting'), 'true');
         assert.equal(JSON.parse(url.searchParams.get('time_range')!).until, day);
         return Response.json({
           data: [
@@ -284,6 +291,41 @@ test('PostgreSQL: idempotent lifecycle, attribution, metrics, isolation and job 
           linkClicks = 14;
           visits = 10;
         }
+        const [snapshot] = await query(
+          'SELECT raw_actions,attribution_context FROM ad_insights WHERE workspace_id=$1',
+          [sw.id],
+        );
+        assert.equal(snapshot.raw_actions[0].action_type, 'landing_page_view');
+        assert.equal(snapshot.attribution_context.action_report_time, 'impression');
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = async () => Response.json({ error: { code: 2 } }, { status: 503 });
+        try {
+          const [failedJob] = await query(
+            "INSERT INTO jobs(workspace_id,kind,dedupe_key) VALUES($1,'meta_sync','provider-failure') RETURNING id",
+            [sw.id],
+          );
+          assert.deepEqual(await runJobs(1, { workspaceId: sw.id, jobId: failedJob.id }), {
+            completed: 0,
+            failed: 1,
+          });
+          const unchanged = await dashboard(
+            { ...sw, user_name: 'Sync', email: 'sync@example.com' },
+            { start: day, end: day },
+          );
+          assert.equal(unchanged.summary.clicks, 14);
+          assert.equal(unchanged.summary.pageviews, 10);
+          await query('DELETE FROM jobs WHERE id=$1', [failedJob.id]);
+        } finally {
+          globalThis.fetch = originalFetch;
+        }
+
+        await query('UPDATE ad_accounts SET selected=false WHERE workspace_id=$1', [sw.id]);
+        const hidden = await dashboard(
+          { ...sw, user_name: 'Sync', email: 'sync@example.com' },
+          { start: day, end: day },
+        );
+        assert.equal(hidden.summary.clicks, 0);
+        await query('UPDATE ad_accounts SET selected=true WHERE workspace_id=$1', [sw.id]);
         assert.equal(
           (await query('SELECT status FROM jobs WHERE id=$1', [foreignJob.id]))[0].status,
           'pending',
@@ -639,8 +681,231 @@ test(
     );
     const [click] = await query('SELECT landing_url FROM clicks WHERE id=$1', [clickId]);
     assert.equal(click.landing_url, 'https://store.example/offer');
+    await query(
+      "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_77','Audit Account','BRL','America/Sao_Paulo',true)",
+      [httpWorkspace.id],
+    );
+    await query(
+      "INSERT INTO campaigns(workspace_id,account_id,external_id,name,status) VALUES($1,'act_77','77','Audit Campaign','ACTIVE')",
+      [httpWorkspace.id],
+    );
+    await query(
+      "INSERT INTO ad_insights(workspace_id,ad_id,adset_id,campaign_id,day,raw_actions,attribution_context,synced_at) VALUES($1,'79','78','77',$2,$3,$4,now())",
+      [
+        httpWorkspace.id,
+        new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }),
+        JSON.stringify([
+          { action_type: 'initiate_checkout', value: '5' },
+          { action_type: 'omni_initiated_checkout', value: '5' },
+        ]),
+        JSON.stringify({ action_report_time: 'impression' }),
+      ],
+    );
+    const auditPath = `/api/events/audit?start=${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}&end=${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}`;
+    assert.equal((await call(auditPath)).status, 401);
+    const auditRes = await call(auditPath, undefined, cookie);
+    assert.equal(auditRes.status, 200);
+    const audit = await auditRes.json();
+    assert.equal(
+      audit.summary.find((r: { event_name: string }) => r.event_name === 'PageView').raw_events,
+      1,
+    );
+    assert.equal(audit.events[0].event_id, eventId);
+    assert.equal(audit.metaActions.length, 2);
+    assert(audit.metaActions.every((a: { value: number }) => a.value === 5));
+    assert.equal(audit.metaActions[0].attribution_context.action_report_time, 'impression');
+    assert(!JSON.stringify(audit).includes('do-not-store@example.com'));
     assert.equal((await call('/api/jobs', {})).status, 401);
     await call('/api/auth/logout', {}, cookie);
     assert.equal((await call('/api/integrations', undefined, cookie)).status, 401);
   },
 );
+
+test('event audit: identity, sessions, test isolation, purchase authority and timezone', async () => {
+  const w = await workspace();
+  await query(
+    "INSERT INTO campaigns(workspace_id,account_id,external_id,name,status) VALUES($1,'act_audit','123','Audit Campaign','ACTIVE')",
+    [w.id],
+  );
+  const clickId = crypto.randomUUID(),
+    sessionId = crypto.randomUUID(),
+    eventId = crypto.randomUUID();
+  const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const input = {
+    event: 'InitiateCheckout',
+    eventId,
+    clickId,
+    sessionId,
+    utm_campaign: '123',
+    isTest: false,
+    occurredAt: `${day}T03:10:00Z`,
+    fbp: 'fb.1.123.456',
+  };
+  const send = (data: typeof input) =>
+    ingestTracking(w.id, data, 'https://example.com/offer', 'test-browser');
+  const duplicate = await Promise.all([send(input), send(input)]);
+  assert.equal(duplicate.filter((r) => r.duplicate).length, 1);
+  let rows = await query('SELECT * FROM jobs WHERE workspace_id=$1', [w.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payload.event_id, eventId);
+  assert.equal(rows[0].payload.event_time, Math.floor(Date.parse(input.occurredAt) / 1000));
+  await assert.rejects(() => send({ ...input, event: 'PageView' }), /outro evento/);
+  await send({ ...input, eventId: crypto.randomUUID() }); // second legitimate action, same session
+  await send({ ...input, eventId: crypto.randomUUID(), sessionId: crypto.randomUUID() });
+  await send({ ...input, event: 'PageView', eventId: crypto.randomUUID() });
+  await send({ ...input, event: 'Purchase', eventId: crypto.randomUUID() });
+  await send({ ...input, eventId: crypto.randomUUID(), isTest: true });
+  await send({ ...input, eventId: crypto.randomUUID(), occurredAt: `${day}T02:59:00Z` }); // prior São Paulo day
+  const data = await dashboard(
+    { ...w, user_name: 'Audit', email: 'audit@example.com' },
+    { start: day, end: day },
+  );
+  assert.equal(data.summary.checkouts, 3);
+  assert.equal(data.summary.sales, 0);
+  assert.equal(data.summary.clicks, 0);
+  assert.equal(data.summary.pageviews, 0); // internal pageview != Meta insight
+  const metric = data.eventMetrics!.find((e) => e.name === 'InitiateCheckout')!;
+  assert.equal(metric.rawEvents, 3);
+  assert.equal(metric.uniqueSessions, 2);
+  assert.equal(metric.eventsWithoutSession, 0);
+  assert.equal(metric.uniqueUsers, null);
+  assert.equal(metric.attributedEvents, 3);
+  assert.equal(
+    (await query('SELECT * FROM jobs WHERE workspace_id=$1 AND dedupe_key=$2', [w.id, eventId]))
+      .length,
+    1,
+  );
+  const testId = crypto.randomUUID();
+  await query("UPDATE workspaces SET test_event_code='TEST_AUDIT' WHERE id=$1", [w.id]);
+  await send({ ...input, eventId: testId });
+  const [job] = await query('SELECT * FROM jobs WHERE workspace_id=$1 AND dedupe_key=$2', [
+    w.id,
+    testId,
+  ]);
+  assert.equal(job.is_test, true);
+  assert.equal(job.test_event_code, 'TEST_AUDIT');
+  const [e] = await query('SELECT * FROM tracking_events WHERE workspace_id=$1 AND event_id=$2', [
+    w.id,
+    testId,
+  ]);
+  assert.equal(e.is_test, true);
+  await query("UPDATE workspaces SET test_event_code='' WHERE id=$1", [w.id]);
+  const retryAfterModeChange = await send({ ...input, eventId: testId });
+  assert.equal(retryAfterModeChange.duplicate, true);
+  assert.equal(retryAfterModeChange.isTest, true);
+  await assert.rejects(
+    () =>
+      send({
+        ...input,
+        eventId: crypto.randomUUID(),
+        occurredAt: new Date(Date.now() + 600000).toISOString(),
+      }),
+    /Horário/,
+  );
+  await query('DELETE FROM clicks WHERE id=$1', [clickId]);
+  const retained = await dashboard(
+    { ...w, user_name: 'Audit', email: 'audit@example.com' },
+    { start: day, end: day, campaign: '123' },
+  );
+  assert.equal(retained.summary.checkouts, 3);
+  await query('DELETE FROM jobs WHERE workspace_id=$1', [w.id]);
+});
+
+test('Cakto test orders never affect production finance; actual paid time is preserved', async () => {
+  const w = await workspace();
+  const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const test = normalizeCakto(
+    {
+      secret,
+      event: 'purchase_approved',
+      is_test: true,
+      data: { id: 'sandbox', amount: 90, createdAt: `${day}T12:00:00Z` },
+    },
+    secret,
+  )!;
+  await ingestCakto(w.id, test);
+  await ingestCakto(w.id, test);
+  let data = await dashboard(
+    { ...w, user_name: 'Audit', email: 'audit@example.com' },
+    { start: day, end: day },
+  );
+  assert.equal(data.summary.revenue, 0);
+  assert.equal(data.financials!.gross, 0);
+  assert.equal(data.sales.length, 0);
+  assert.equal((await query('SELECT * FROM orders WHERE workspace_id=$1', [w.id])).length, 1);
+  assert.equal((await query('SELECT * FROM jobs WHERE workspace_id=$1', [w.id])).length, 0);
+  const paid = normalizeCakto(
+    {
+      secret,
+      event: 'purchase_approved',
+      data: { id: 'paid', amount: 90, paidAt: `${day}T02:50:00Z`, updatedAt: `${day}T12:00:00Z` },
+    },
+    secret,
+  )!;
+  await ingestCakto(w.id, paid);
+  const [order] = await query(
+    "SELECT purchased_at FROM orders WHERE workspace_id=$1 AND external_id='paid'",
+    [w.id],
+  );
+  assert.equal(order.purchased_at.toISOString(), `${day}T02:50:00.000Z`);
+  data = await dashboard(
+    { ...w, user_name: 'Audit', email: 'audit@example.com' },
+    { start: day, end: day },
+  );
+  assert.equal(data.summary.sales, 0); // paid on previous local day, not on notification day
+  await query('DELETE FROM jobs WHERE workspace_id=$1', [w.id]);
+});
+
+test('CAPI retries preserve browser event ID and test routing captured at ingestion', async () => {
+  const w = await workspace();
+  await query(
+    "UPDATE workspaces SET pixel_id='1234567890',capi_token=$2,test_event_code='TEST_CAPTURED' WHERE id=$1",
+    [w.id, encrypt('audit-mocked-capi-token')],
+  );
+  const eventId = crypto.randomUUID();
+  await ingestTracking(
+    w.id,
+    {
+      event: 'InitiateCheckout',
+      eventId,
+      clickId: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      isTest: true,
+      fbp: 'fb.1.123.456',
+    },
+    'https://example.com',
+    'test-agent',
+  );
+  const [job] = await query('SELECT id FROM jobs WHERE workspace_id=$1', [w.id]);
+  await query("UPDATE workspaces SET test_event_code='' WHERE id=$1", [w.id]);
+  let calls = 0;
+  const fn = mock.method(globalThis, 'fetch', async (_input: unknown, init?: RequestInit) => {
+    const body = new URLSearchParams(init!.body as URLSearchParams);
+    assert.equal(body.get('test_event_code'), 'TEST_CAPTURED');
+    const [data] = JSON.parse(body.get('data')!);
+    assert.equal(data.event_id, eventId);
+    assert.equal(data.event_name, 'InitiateCheckout');
+    calls++;
+    return calls === 1
+      ? Response.json({ error: { code: 2 } }, { status: 503 })
+      : Response.json({ events_received: 1 });
+  });
+  try {
+    assert.deepEqual(await runJobs(1, { workspaceId: w.id, jobId: job.id }), {
+      completed: 0,
+      failed: 1,
+    });
+    await query('UPDATE jobs SET run_at=now() WHERE id=$1', [job.id]);
+    assert.deepEqual(await runJobs(1, { workspaceId: w.id, jobId: job.id }), {
+      completed: 1,
+      failed: 0,
+    });
+    assert.equal(calls, 2);
+    assert.equal(
+      (await query('SELECT * FROM tracking_events WHERE workspace_id=$1', [w.id])).length,
+      1,
+    );
+  } finally {
+    fn.mock.restore();
+  }
+});

@@ -12,8 +12,8 @@ export type Filters = {
 };
 export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData> {
   const values = [w.id, f.start, f.end, f.campaign || null, f.adset || null, f.ad || null];
-  const orderFilter = `workspace_id=$1 AND (COALESCE(purchased_at,occurred_at) AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR campaign_id=$4) AND ($5::text IS NULL OR adset_id=$5) AND ($6::text IS NULL OR ad_id=$6)`;
-  const insightFilter = `workspace_id=$1 AND day BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR campaign_id=$4) AND ($5::text IS NULL OR adset_id=$5) AND ($6::text IS NULL OR ad_id=$6)`;
+  const orderFilter = `workspace_id=$1 AND is_test=false AND (COALESCE(purchased_at,occurred_at) AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR campaign_id=$4) AND ($5::text IS NULL OR adset_id=$5) AND ($6::text IS NULL OR ad_id=$6)`;
+  const insightFilter = `workspace_id=$1 AND EXISTS(SELECT 1 FROM campaigns ic JOIN ad_accounts ia ON ia.workspace_id=ic.workspace_id AND ia.external_id=ic.account_id WHERE ic.workspace_id=ad_insights.workspace_id AND ic.external_id=ad_insights.campaign_id AND ia.selected=true) AND day BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR campaign_id=$4) AND ($5::text IS NULL OR adset_id=$5) AND ($6::text IS NULL OR ad_id=$6)`;
   const [
     totals,
     insights,
@@ -55,7 +55,7 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
       values,
     ),
     query(
-      `SELECT e.event_name,count(*)::int AS count FROM tracking_events e JOIN clicks c ON c.id=e.click_id AND c.workspace_id=e.workspace_id WHERE e.workspace_id=$1 AND (e.created_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR c.campaign_id=$4) AND ($5::text IS NULL OR c.adset_id=$5) AND ($6::text IS NULL OR c.ad_id=$6) GROUP BY e.event_name`,
+      `SELECT e.event_name,count(*)::int AS count,count(DISTINCT e.session_id)::int AS sessions,count(*) FILTER(WHERE e.session_id IS NULL)::int AS missing_sessions,count(*) FILTER(WHERE EXISTS(SELECT 1 FROM campaigns ec WHERE ec.workspace_id=e.workspace_id AND ec.external_id=COALESCE(e.campaign_id,c.campaign_id)))::int AS attributed FROM tracking_events e LEFT JOIN clicks c ON c.id=e.click_id AND c.workspace_id=e.workspace_id WHERE e.workspace_id=$1 AND e.is_test=false AND (COALESCE(e.occurred_at,e.created_at) AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR COALESCE(e.campaign_id,c.campaign_id)=$4) AND ($5::text IS NULL OR COALESCE(e.adset_id,c.adset_id)=$5) AND ($6::text IS NULL OR COALESCE(e.ad_id,c.ad_id)=$6) GROUP BY e.event_name`,
       values,
     ),
     query('SELECT last_sync_at,expires_at FROM meta_connections WHERE workspace_id=$1', [w.id]),
@@ -145,6 +145,14 @@ export async function dashboard(w: Workspace, f: Filters): Promise<DashboardData
     expenses: costs.expenses,
   };
   return {
+    eventMetrics: events.map((e) => ({
+      name: e.event_name,
+      rawEvents: e.count,
+      uniqueSessions: e.sessions,
+      eventsWithoutSession: e.missing_sessions,
+      attributedEvents: e.attributed,
+      uniqueUsers: null,
+    })),
     financials,
     workspaceId: w.id,
     demo: false,

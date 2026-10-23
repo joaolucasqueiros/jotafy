@@ -143,3 +143,5 @@ Esta entrega é a base funcional da versão 1.0, não uma certificação de pron
 <!-- Cloudflare: reenviar versão com diagnóstico de configuração do Meta OAuth. -->
 
 **Windows com dois cliques:** use [Atualizar-MetaTrack.cmd](Atualizar-MetaTrack.cmd) para processar a fila localmente uma vez. Veja [o passo a passo](docs/windows-worker.md).
+
+**Auditoria de eventos e métricas:** [diagnóstico, correções e validação de 23/10/2026](docs/auditoria-eventos-2026-10-23.md). A versão requer a migração 006 antes do deploy.
