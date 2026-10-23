@@ -136,3 +136,11 @@ Não foram produzidos novos números de produção. O 11/7/8/0 informado permane
 9. Retenção existente continua: eventos/cliques 90 dias, recibos 180 dias, payloads de jobs conforme política. Logs do provedor devem ter acesso/retencão limitados; IDs de sessão também são identificadores pseudônimos.
 
 A divergência foi **explicada no nível das definições**, mas sua decomposição exata em produção permanece pendente. Não há base para alterar 8 para 5 ou declarar três eventos inválidos.
+
+## Ajuste solicitado: funil somente de campanhas com UTM
+
+Após a auditoria, o usuário solicitou excluir checkouts externos às campanhas. O funil agora exige que o ID registrado pela `utm_campaign` (no evento ou no clique de atribuição preservado) corresponda a uma campanha do mesmo workspace, pertencente a uma conta de anúncios selecionada. Filtros de campanha/conjunto/anúncio continuam sendo aplicados. A regra também vale para as sessões apresentadas no rodapé.
+
+Eventos sem UTM, com campanha desconhecida ou de outro workspace não entram no funil. Permanecem no banco e no diagnóstico autenticado para preservar evidências; vendas e webhooks não são descartados por essa regra. A atribuição armazenada pode vir de uma visita anterior dentro da validade do clique: não é prova de um novo clique pago na mesma sessão nem reprodução da atribuição Meta.
+
+Teste de regressão controlado: 8 eventos internos (5 com UTM válida, 1 sem UTM, 1 com campanha inexistente e 1 com campanha de outro workspace) resultam em **5 checkouts no funil**, com os 8 registros preservados. Desmarcar a conta retira seus checkouts do total. Esse exemplo é sintético e não representa uma reconciliação dos 8 eventos reais de produção.

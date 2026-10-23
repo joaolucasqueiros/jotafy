@@ -1136,9 +1136,10 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
                       sales={s.sales}
                     />
                     <div className="panel-footnote">
-                      Cliques e visitas: Meta Ads. Checkouts: eventos brutos do pixel MetaTrack.
-                      Vendas: pedidos aprovados Cakto. Fontes e populações diferentes; percentuais =
-                      etapa ÷ cliques, não conversões de uma mesma coorte.
+                      Cliques e visitas: Meta Ads. Checkouts: eventos do pixel com UTM de campanha
+                      reconhecida nas contas selecionadas. Vendas: pedidos aprovados Cakto. Fontes e
+                      populações diferentes; percentuais = etapa ÷ cliques, não conversões de uma
+                      mesma coorte.
                       {data.eventMetrics?.find((e) => e.name === 'InitiateCheckout') &&
                         ` Checkouts: ${data.eventMetrics.find((e) => e.name === 'InitiateCheckout')!.uniqueSessions} sessões identificadas; ${data.eventMetrics.find((e) => e.name === 'InitiateCheckout')!.eventsWithoutSession} eventos sem sessão. Usuários únicos não disponíveis.`}
                       {s.checkouts > s.pageviews &&

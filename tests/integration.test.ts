@@ -724,6 +724,10 @@ test(
 test('event audit: identity, sessions, test isolation, purchase authority and timezone', async () => {
   const w = await workspace();
   await query(
+    "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_audit','Audit Account','BRL','America/Sao_Paulo',true)",
+    [w.id],
+  );
+  await query(
     "INSERT INTO campaigns(workspace_id,account_id,external_id,name,status) VALUES($1,'act_audit','123','Audit Campaign','ACTIVE')",
     [w.id],
   );
@@ -908,4 +912,67 @@ test('CAPI retries preserve browser event ID and test routing captured at ingest
   } finally {
     fn.mock.restore();
   }
+});
+
+test('campaign funnel excludes organic, unknown and foreign UTM checkouts without deleting evidence', async () => {
+  const w = await workspace(),
+    foreign = await workspace();
+  await query(
+    "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_utm','UTM Account','BRL','America/Sao_Paulo',true)",
+    [w.id],
+  );
+  await query(
+    "INSERT INTO campaigns(workspace_id,account_id,external_id,name,status) VALUES($1,'act_utm','utm-campaign','Campaign','ACTIVE'),($2,'act_other','foreign-campaign','Other','ACTIVE')",
+    [w.id, foreign.id],
+  );
+  const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  for (const campaign of [
+    'utm-campaign',
+    'utm-campaign',
+    'utm-campaign',
+    'utm-campaign',
+    'utm-campaign',
+    undefined,
+    'unknown-campaign',
+    'foreign-campaign',
+  ]) {
+    await ingestTracking(
+      w.id,
+      {
+        event: 'InitiateCheckout',
+        eventId: crypto.randomUUID(),
+        clickId: crypto.randomUUID(),
+        sessionId: crypto.randomUUID(),
+        isTest: false,
+        utm_campaign: campaign,
+      },
+      'https://offer.example',
+      'test-agent',
+    );
+  }
+  const identity = { ...w, user_name: 'UTM Test', email: 'utm@example.com' };
+  const result = await dashboard(identity, { start: day, end: day });
+  assert.equal(result.summary.checkouts, 5);
+  assert.equal(result.eventMetrics!.find((e) => e.name === 'InitiateCheckout')!.uniqueSessions, 5);
+  assert.equal(
+    (
+      await query('SELECT count(*)::int AS count FROM tracking_events WHERE workspace_id=$1', [
+        w.id,
+      ])
+    )[0].count,
+    8,
+  );
+  assert.equal(
+    (await dashboard(identity, { start: day, end: day, campaign: 'unknown-campaign' })).summary
+      .checkouts,
+    0,
+  );
+  assert.equal(
+    (await dashboard(identity, { start: day, end: day, campaign: 'utm-campaign' })).summary
+      .checkouts,
+    5,
+  );
+  await query('UPDATE ad_accounts SET selected=false WHERE workspace_id=$1', [w.id]);
+  assert.equal((await dashboard(identity, { start: day, end: day })).summary.checkouts, 0);
+  await query('DELETE FROM jobs WHERE workspace_id=$1', [w.id]);
 });
