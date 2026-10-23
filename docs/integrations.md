@@ -209,3 +209,9 @@ fbq('trackSingle', 'ID_DO_MESMO_PIXEL', 'InitiateCheckout', {}, { eventID: event
 Isso preserva a identidade usada no job CAPI; conferir a deduplicação real nos Eventos de Teste Meta. Uma tentativa legítima posterior recebe outro ID. Se a integração da Cakto já emite Purchase com ID próprio, não presumir deduplicação com `cakto:<pedido>:purchase`: escolher um emissor ou homologar identidade compartilhada. Não disparar Purchase apenas por entrar no checkout.
 
 O pixel aceita `MetaTrack.init({ key: 'CHAVE_PUBLICA', consent: true, isTest: true })`. Sem código CAPI de teste, esses eventos ficam somente no diagnóstico interno. Para produção, remova o código de teste do workspace e o `isTest:true`. Eventos históricos sem marcação não são excluídos automaticamente.
+
+### Indicador de UTMs no painel
+
+Em **Gerador de UTMs → Rastreamento das UTMs**, o botão **Verificar UTMs** consulta eventos de produção das campanhas reconhecidas nas contas selecionadas. O ícone verde **Rastreamento ativo** indica recebimento nas últimas 24 horas; a lista mostra eventos, checkouts e último recebimento em São Paulo. Sem recebimentos recentes, o status é **Sem eventos recentes** ou **Aguardando primeiro evento**. Não indica falha automaticamente nem comprova que os parâmetros estão instalados em todos os anúncios. Gerar/copiar a URL não ativa o indicador.
+
+O endpoint autenticado `GET /api/utms/status` é restrito ao workspace, não retorna tokens nem URLs de visitantes e não utiliza cache. Eventos de teste, campanhas desconhecidas e de outras contas/workspaces não confirmam o indicador. No funil, checkouts sem UTM de campanha reconhecida permanecem excluídos; os eventos brutos são preservados no diagnóstico.

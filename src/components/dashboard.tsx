@@ -56,6 +56,7 @@ import {
   OverviewLayout,
   useDashboardLayout,
 } from './dashboard-layout';
+import { UtmTrackingStatus } from './utm-tracking-status';
 import { ConversionFunnel } from './conversion-funnel';
 import { Modal } from './ui/modal';
 import { CostSettings } from './cost-settings';
@@ -1545,7 +1546,12 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               </section>
             </>
           )}
-          {tab === 'utms' && <UtmGenerator copy={copy} />}
+          {tab === 'utms' && (
+            <>
+              <UtmTrackingStatus demo={demo} />
+              <UtmGenerator copy={copy} />
+            </>
+          )}
           {tab === 'settings' && (
             <CostSettings
               demo={demo}

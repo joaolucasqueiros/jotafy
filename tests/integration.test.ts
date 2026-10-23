@@ -701,6 +701,10 @@ test(
         JSON.stringify({ action_report_time: 'impression' }),
       ],
     );
+    assert.equal((await call('/api/utms/status')).status, 401);
+    const statusResponse = await call('/api/utms/status', undefined, cookie);
+    assert.equal(statusResponse.status, 200);
+    assert.equal((await statusResponse.json()).campaigns[0].state, 'no_events');
     const auditPath = `/api/events/audit?start=${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}&end=${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}`;
     assert.equal((await call(auditPath)).status, 401);
     const auditRes = await call(auditPath, undefined, cookie);
@@ -975,4 +979,39 @@ test('campaign funnel excludes organic, unknown and foreign UTM checkouts withou
   await query('UPDATE ad_accounts SET selected=false WHERE workspace_id=$1', [w.id]);
   assert.equal((await dashboard(identity, { start: day, end: day })).summary.checkouts, 0);
   await query('DELETE FROM jobs WHERE workspace_id=$1', [w.id]);
+});
+
+test('UTM status confirms only recent production events for selected same-workspace campaigns', async () => {
+  const { utmTrackingStatus } = await import('../src/lib/utm-status');
+  const w = await workspace(),
+    other = await workspace();
+  await query(
+    "INSERT INTO ad_accounts(workspace_id,external_id,name,currency,timezone,selected) VALUES($1,'act_status','Account','BRL','America/Sao_Paulo',true),($2,'act_other','Other','BRL','America/Sao_Paulo',true)",
+    [w.id, other.id],
+  );
+  await query(
+    "INSERT INTO campaigns(workspace_id,account_id,external_id,name,status) VALUES($1,'act_status','recent','Recent','ACTIVE'),($1,'act_status','old','Old','PAUSED'),($1,'act_status','empty','Empty','ACTIVE'),($2,'act_other','foreign','Foreign','ACTIVE')",
+    [w.id, other.id],
+  );
+  for (const [campaign, test, age] of [
+    ['recent', false, 0],
+    ['recent', true, 0],
+    ['old', false, 48],
+    ['empty', true, 0],
+  ] as const) {
+    await query(
+      "INSERT INTO tracking_events(workspace_id,event_id,event_name,campaign_id,is_test,created_at) VALUES($1,$2,'InitiateCheckout',$3,$4,now()-$5*interval '1 hour')",
+      [w.id, crypto.randomUUID(), campaign, test, age],
+    );
+  }
+  const data = await utmTrackingStatus(w.id);
+  assert.equal(data.campaigns.length, 3);
+  const recent = data.campaigns.find((c) => c.id === 'recent')!;
+  assert.equal(recent.state, 'receiving');
+  assert.equal(recent.events24h, 1);
+  assert.equal(recent.checkouts24h, 1);
+  assert.equal(data.campaigns.find((c) => c.id === 'old')!.state, 'historical');
+  assert.equal(data.campaigns.find((c) => c.id === 'empty')!.state, 'no_events');
+  await query('UPDATE ad_accounts SET selected=false WHERE workspace_id=$1', [w.id]);
+  assert.equal((await utmTrackingStatus(w.id)).campaigns.length, 0);
 });
